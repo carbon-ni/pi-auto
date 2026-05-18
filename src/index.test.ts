@@ -1,5 +1,16 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { getLastUserMessageText, parseAutoArgs } from "./index.js";
+
+describe("package config", () => {
+  it("declares pi extension entrypoint for directory loading", () => {
+    const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
+      pi?: { extensions?: string[] };
+    };
+
+    expect(packageJson.pi?.extensions).toContain("./src/index.ts");
+  });
+});
 
 describe("parseAutoArgs", () => {
   it("parses repeat count without message", () => {
