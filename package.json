@@ -9,8 +9,11 @@
     "test:watch": "vitest"
   },
   "devDependencies": {
-    "@mariozechner/pi-coding-agent": "latest",
-    "typescript": "latest",
-    "vitest": "latest"
+    "@mariozechner/pi-coding-agent": "0.73.1",
+    "typescript": "6.0.3",
+    "vitest": "4.1.6"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }
