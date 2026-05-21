@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getLastUserMessageText, parseAutoArgs } from "./index.js";
+import { getLastUserMessageText, parseAutoArgs } from "./lib/auto-helpers.js";
 
 describe("parseAutoArgs", () => {
   it("parses repeat count without message", () => {
