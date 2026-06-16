@@ -47,8 +47,34 @@ export function getLastUserMessageText(branch: unknown[]): string | undefined {
   return undefined;
 }
 
+type AutoRun = {
+  message: string;
+  remaining: number;
+};
+
 export default function (pi: ExtensionAPI) {
   let autoTimer: NodeJS.Timeout | undefined;
+  let autoRun: AutoRun | undefined;
+
+  pi.registerCommand("auto-edit", {
+    description: "Edit the message used by a running auto mode. Usage: /auto-edit <message>",
+    handler: async (args, ctx) => {
+      const editedMessage = args.trim();
+
+      if (!editedMessage) {
+        ctx.ui.notify("Usage: /auto-edit <message>", "warning");
+        return;
+      }
+
+      if (!autoRun) {
+        ctx.ui.notify("Auto mode is not running. Start it with /auto <count> [message].", "warning");
+        return;
+      }
+
+      autoRun.message = editedMessage;
+      ctx.ui.notify(`Auto mode message updated to \"${editedMessage}\".`, "info");
+    },
+  });
 
   pi.registerCommand("auto", {
     description: "Send a message N times, waiting for each agent turn to finish before sending the next one. Usage: /auto <count> [message]",
@@ -69,15 +95,16 @@ export default function (pi: ExtensionAPI) {
 
       if (autoTimer) clearTimeout(autoTimer);
 
-      let remaining = parsed.count;
+      autoRun = { message, remaining: parsed.count };
       ctx.ui.notify(
         `Auto mode: sending \"${message}\" ${parsed.count} time(s).`,
         "info",
       );
 
       const tick = () => {
-        if (remaining < 1) {
+        if (!autoRun || autoRun.remaining < 1) {
           autoTimer = undefined;
+          autoRun = undefined;
           ctx.ui.notify("Auto mode complete.", "info");
           return;
         }
@@ -87,8 +114,8 @@ export default function (pi: ExtensionAPI) {
           return;
         }
 
-        remaining -= 1;
-        pi.sendUserMessage(message);
+        autoRun.remaining -= 1;
+        pi.sendUserMessage(autoRun.message);
         autoTimer = setTimeout(tick, 250);
       };
 

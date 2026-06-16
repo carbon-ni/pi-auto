@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
-import { getLastUserMessageText, parseAutoArgs } from "./index.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import autoExtension, { getLastUserMessageText, parseAutoArgs } from "./index.js";
 
 describe("package config", () => {
   it("declares pi extension entrypoint for directory loading", () => {
@@ -59,5 +59,58 @@ describe("getLastUserMessageText", () => {
 
   it("returns undefined when no previous user text exists", () => {
     expect(getLastUserMessageText([])).toBeUndefined();
+  });
+});
+
+describe("auto command", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function createHarness() {
+    const commands = new Map<string, { handler: (args: string, ctx: any) => Promise<void> }>();
+    const sentMessages: string[] = [];
+    const notifications: string[] = [];
+    const pi = {
+      registerCommand: vi.fn((name: string, command: { handler: (args: string, ctx: any) => Promise<void> }) => {
+        commands.set(name, command);
+      }),
+      sendUserMessage: vi.fn((message: string) => {
+        sentMessages.push(message);
+      }),
+    };
+    const ctx = {
+      isIdle: vi.fn(() => true),
+      sessionManager: { getBranch: vi.fn(() => []) },
+      ui: { notify: vi.fn((message: string) => notifications.push(message)) },
+    };
+
+    autoExtension(pi as any);
+
+    return { autoCommand: commands.get("auto")!, autoEditCommand: commands.get("auto-edit")!, ctx, notifications, sentMessages };
+  }
+
+  it("edits the running auto message for future sends", async () => {
+    const { autoCommand, autoEditCommand, ctx, sentMessages } = createHarness();
+
+    await autoCommand.handler("3 first", ctx);
+    await vi.advanceTimersByTimeAsync(1);
+
+    await autoEditCommand.handler("second", ctx);
+    await vi.advanceTimersByTimeAsync(500);
+
+    expect(sentMessages).toEqual(["first", "second", "second"]);
+  });
+
+  it("rejects editing auto message when auto mode is not running", async () => {
+    const { autoEditCommand, ctx, notifications } = createHarness();
+
+    await autoEditCommand.handler("second", ctx);
+
+    expect(notifications).toContain("Auto mode is not running. Start it with /auto <count> [message].");
   });
 });

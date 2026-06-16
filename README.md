@@ -16,6 +16,12 @@ Repeats the previous user message three times. Each message is sent only after t
 
 Overrides the previous-message behavior and sends `keep going` three times, waiting for idle between sends.
 
+```text
+/auto-edit keep going with this instead
+```
+
+Changes the message for a running auto mode. Future sends use the edited message.
+
 ## Install locally
 
 From this repo:
