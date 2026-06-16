@@ -8,5 +8,8 @@ lint:
 test:
 	npm test
 
+coverage:
+	npx vitest run --coverage
+
 clean:
 	rm -rf coverage dist
