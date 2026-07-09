@@ -4,6 +4,7 @@
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { Type } from "typebox";
 import { getLastUserMessageText, parseAutoArgs } from "../lib/auto-helpers.js";
 
 const POLL_INTERVAL_MS = 250;
@@ -28,6 +29,33 @@ export default function registerAutoCommand(pi: ExtensionAPI) {
     autoRun = undefined;
     ctx.ui.notify("Auto mode stopped.", "info");
   }
+
+  pi.registerTool({
+    name: "auto_stop",
+    label: "Auto Stop",
+    description:
+      "Stop the currently running /auto loop immediately. Call this when the task is complete before all iterations finish.",
+    promptSnippet: "auto_stop() — stop the running /auto loop early",
+    parameters: Type.Object({}),
+    async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
+      if (!autoRun && !autoTimer) {
+        return {
+          content: [{ type: "text" as const, text: "No auto mode is running." }],
+          details: undefined,
+        };
+      }
+
+      if (autoTimer) clearTimeout(autoTimer);
+      autoTimer = undefined;
+      autoRun = undefined;
+      ctx.ui.notify("Auto mode stopped.", "info");
+
+      return {
+        content: [{ type: "text" as const, text: "Auto mode stopped." }],
+        details: undefined,
+      };
+    },
+  });
 
   pi.registerCommand("auto-edit", {
     description: "Edit the message used by a running auto mode. Usage: /auto-edit <message>",

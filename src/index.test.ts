@@ -108,12 +108,17 @@ describe("getLastUserMessageText", () => {
 
 function createMockPi() {
   const commands: Record<string, { description: string; handler: Function }> = {};
+  const tools: Record<string, { name: string; execute: Function }> = {};
   return {
     registerCommand: vi.fn((name, cmd) => {
       commands[name] = cmd;
     }),
+    registerTool: vi.fn((def) => {
+      tools[def.name] = def;
+    }),
     sendUserMessage: vi.fn(),
     _commands: commands,
+    _tools: tools,
   };
 }
 
@@ -290,5 +295,51 @@ describe("registerAutoCommand", () => {
 
     await pi._commands.auto.handler("stop", ctx);
     expect(ctx.ui.notify).toHaveBeenCalledWith("No auto mode is running.", "warning");
+  });
+});
+
+// --- auto_stop tool ---
+
+describe("auto_stop tool", () => {
+  it("registers the auto_stop tool", () => {
+    const pi = createMockPi();
+    registerAutoCommand(pi as any);
+    expect(pi.registerTool).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "auto_stop" }),
+    );
+  });
+
+  it("stops a running auto loop", async () => {
+    vi.useFakeTimers();
+    const pi = createMockPi();
+    registerAutoCommand(pi as any);
+    const ctx = createMockCtx(true, [
+      { type: "message", message: { role: "user", content: [{ type: "text", text: "go" }] } },
+    ]);
+
+    // Start auto with 10 iterations
+    await pi._commands.auto.handler("10", ctx);
+    vi.advanceTimersByTime(0);
+    expect(pi.sendUserMessage).toHaveBeenCalledTimes(1);
+
+    // Call auto_stop
+    const result = await pi._tools.auto_stop.execute("id", {}, undefined, undefined, ctx);
+    expect(result.content[0].text).toBe("Auto mode stopped.");
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Auto mode stopped.", "info");
+
+    // No more sends
+    vi.advanceTimersByTime(1000);
+    expect(pi.sendUserMessage).toHaveBeenCalledTimes(1);
+
+    vi.useRealTimers();
+  });
+
+  it("returns message when no auto loop is running", async () => {
+    const pi = createMockPi();
+    registerAutoCommand(pi as any);
+    const ctx = createMockCtx();
+
+    const result = await pi._tools.auto_stop.execute("id", {}, undefined, undefined, ctx);
+    expect(result.content[0].text).toBe("No auto mode is running.");
   });
 });

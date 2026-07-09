@@ -22,6 +22,12 @@ Overrides the previous-message behavior and sends `keep going` three times, wait
 
 Changes the message for a running auto mode. Future sends use the edited message.
 
+The agent can also stop the loop early by calling the `auto_stop` tool:
+
+```text
+/auto 10 continue and call auto_stop once you are done
+```
+
 ## Install locally
 
 From this repo:
