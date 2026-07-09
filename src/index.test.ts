@@ -109,6 +109,7 @@ describe("getLastUserMessageText", () => {
 function createMockPi() {
   const commands: Record<string, { description: string; handler: Function }> = {};
   const tools: Record<string, { name: string; execute: Function }> = {};
+  const handlers: Record<string, Function[]> = {};
   return {
     registerCommand: vi.fn((name, cmd) => {
       commands[name] = cmd;
@@ -116,10 +117,18 @@ function createMockPi() {
     registerTool: vi.fn((def) => {
       tools[def.name] = def;
     }),
+    on: vi.fn((event: string, handler: Function) => {
+      (handlers[event] ??= []).push(handler);
+    }),
     sendUserMessage: vi.fn(),
     _commands: commands,
     _tools: tools,
+    _handlers: handlers,
   };
+}
+
+function emit(pi: ReturnType<typeof createMockPi>, event: string, payload: unknown) {
+  for (const handler of pi._handlers[event] ?? []) handler(payload);
 }
 
 function createMockCtx(isIdle = true, branch: unknown[] = []) {
@@ -295,6 +304,60 @@ describe("registerAutoCommand", () => {
 
     await pi._commands.auto.handler("stop", ctx);
     expect(ctx.ui.notify).toHaveBeenCalledWith("No auto mode is running.", "warning");
+  });
+
+  it.each([
+    "new",
+    "fork",
+    "resume",
+    "reload",
+    "quit",
+  ] as const)(
+    "stops the auto loop on session_shutdown reason=%s (captured ctx goes stale)",
+    async (reason) => {
+      vi.useFakeTimers();
+      const pi = createMockPi();
+      registerAutoCommand(pi as any);
+      const ctx = createMockCtx(true, [
+        { type: "message", message: { role: "user", content: [{ type: "text", text: "go" }] } },
+      ]);
+
+      await pi._commands.auto.handler("5", ctx);
+      vi.advanceTimersByTime(0);
+      expect(pi.sendUserMessage).toHaveBeenCalledTimes(1);
+
+      // Simulate the session being replaced (e.g. pi-context-pruner newSession/fork).
+      // The captured command ctx is now stale; the tick loop must not run again.
+      emit(pi, "session_shutdown", { type: "session_shutdown", reason });
+
+      vi.advanceTimersByTime(10_000);
+      expect(pi.sendUserMessage).toHaveBeenCalledTimes(1);
+
+      vi.useRealTimers();
+    },
+  );
+
+  it("can start auto again after session_shutdown", async () => {
+    vi.useFakeTimers();
+    const pi = createMockPi();
+    registerAutoCommand(pi as any);
+    const ctx = createMockCtx(true, [
+      { type: "message", message: { role: "user", content: [{ type: "text", text: "go" }] } },
+    ]);
+
+    await pi._commands.auto.handler("2", ctx);
+    vi.advanceTimersByTime(0);
+    expect(pi.sendUserMessage).toHaveBeenCalledTimes(1);
+
+    emit(pi, "session_shutdown", { type: "session_shutdown", reason: "new" });
+
+    // Restart on the fresh session — new loop works.
+    await pi._commands.auto.handler("1", ctx);
+    vi.advanceTimersByTime(250);
+    expect(pi.sendUserMessage).toHaveBeenCalledTimes(2);
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Auto mode complete.", "info");
+
+    vi.useRealTimers();
   });
 });
 

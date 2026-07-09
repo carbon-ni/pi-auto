@@ -18,14 +18,18 @@ export default function registerAutoCommand(pi: ExtensionAPI) {
   let autoTimer: NodeJS.Timeout | undefined;
   let autoRun: AutoRun | undefined;
 
+  function clearAutoTimer() {
+    if (autoTimer) clearTimeout(autoTimer);
+    autoTimer = undefined;
+  }
+
   function stopAuto(ctx: { ui: { notify: Function } }) {
     if (!autoRun && !autoTimer) {
       ctx.ui.notify("No auto mode is running.", "warning");
       return;
     }
 
-    if (autoTimer) clearTimeout(autoTimer);
-    autoTimer = undefined;
+    clearAutoTimer();
     autoRun = undefined;
     ctx.ui.notify("Auto mode stopped.", "info");
   }
@@ -45,8 +49,7 @@ export default function registerAutoCommand(pi: ExtensionAPI) {
         };
       }
 
-      if (autoTimer) clearTimeout(autoTimer);
-      autoTimer = undefined;
+      clearAutoTimer();
       autoRun = undefined;
       ctx.ui.notify("Auto mode stopped.", "info");
 
@@ -55,6 +58,15 @@ export default function registerAutoCommand(pi: ExtensionAPI) {
         details: undefined,
       };
     },
+  });
+
+  // The captured command ctx becomes stale after another extension (or the user)
+  // swaps the session via newSession/fork/switchSession/reload. The tick loop
+  // must not run again, or it throws on the stale ctx. Auto is bound to the
+  // session it started in, so stopping on replacement is the correct behavior.
+  pi.on("session_shutdown", () => {
+    clearAutoTimer();
+    autoRun = undefined;
   });
 
   pi.registerCommand("auto-edit", {
