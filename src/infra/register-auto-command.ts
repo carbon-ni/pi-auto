@@ -1,38 +1,20 @@
 /**
- * Extension registration and timer lifecycle.
- * Owns all pi SDK runtime interaction.
+ * Extension registration — pure wiring.
+ *
+ * Builds one `AutoLoop` and binds the `/auto`, `/auto-edit` commands, the
+ * `auto_stop` tool, and the `session_shutdown` lifecycle hook to it. All state
+ * and timer logic lives in `AutoLoop`; this module only translates command
+ * arguments and tool results.
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
+
 import { getLastUserMessageText, parseAutoArgs } from "../lib/auto-helpers.js";
-
-const POLL_INTERVAL_MS = 250;
-
-type AutoRun = {
-  message: string;
-  remaining: number;
-};
+import { AutoLoop } from "./auto-loop.js";
 
 export default function registerAutoCommand(pi: ExtensionAPI) {
-  let autoTimer: NodeJS.Timeout | undefined;
-  let autoRun: AutoRun | undefined;
-
-  function clearAutoTimer() {
-    if (autoTimer) clearTimeout(autoTimer);
-    autoTimer = undefined;
-  }
-
-  function stopAuto(ctx: { ui: { notify: Function } }) {
-    if (!autoRun && !autoTimer) {
-      ctx.ui.notify("No auto mode is running.", "warning");
-      return;
-    }
-
-    clearAutoTimer();
-    autoRun = undefined;
-    ctx.ui.notify("Auto mode stopped.", "info");
-  }
+  const loop = new AutoLoop((message) => pi.sendUserMessage(message));
 
   pi.registerTool({
     name: "auto_stop",
@@ -42,49 +24,44 @@ export default function registerAutoCommand(pi: ExtensionAPI) {
     promptSnippet: "auto_stop() — stop the running /auto loop early",
     parameters: Type.Object({}),
     async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
-      if (!autoRun && !autoTimer) {
-        return {
-          content: [{ type: "text" as const, text: "No auto mode is running." }],
-          details: undefined,
-        };
-      }
-
-      clearAutoTimer();
-      autoRun = undefined;
-      ctx.ui.notify("Auto mode stopped.", "info");
-
+      loop.attach(ctx);
+      const wasRunning = loop.stop();
       return {
-        content: [{ type: "text" as const, text: "Auto mode stopped." }],
+        content: [
+          {
+            type: "text" as const,
+            text: wasRunning ? "Auto mode stopped." : "No auto mode is running.",
+          },
+        ],
         details: undefined,
       };
     },
   });
 
-  // The captured command ctx becomes stale after another extension (or the user)
-  // swaps the session via newSession/fork/switchSession/reload. The tick loop
-  // must not run again, or it throws on the stale ctx. Auto is bound to the
-  // session it started in, so stopping on replacement is the correct behavior.
-  pi.on("session_shutdown", () => {
-    clearAutoTimer();
-    autoRun = undefined;
-  });
+  // The captured port goes stale when another extension (or the user) swaps the
+  // session via newSession/fork/switchSession/reload. Auto is bound to the
+  // session it started in, so detaching on replacement is the correct behavior.
+  pi.on("session_shutdown", () => loop.detach());
 
   pi.registerCommand("auto-edit", {
     description: "Edit the message used by a running auto mode. Usage: /auto-edit <message>",
     handler: async (args, ctx) => {
-      const editedMessage = args.trim();
+      loop.attach(ctx);
 
+      const editedMessage = args.trim();
       if (!editedMessage) {
         ctx.ui.notify("Usage: /auto-edit <message>", "warning");
         return;
       }
 
-      if (!autoRun) {
-        ctx.ui.notify("Auto mode is not running. Start it with /auto <count> [message].", "warning");
+      if (!loop.edit(editedMessage)) {
+        ctx.ui.notify(
+          "Auto mode is not running. Start it with /auto <count> [message].",
+          "warning",
+        );
         return;
       }
 
-      autoRun.message = editedMessage;
       ctx.ui.notify(`Auto mode message updated to "${editedMessage}".`, "info");
     },
   });
@@ -93,13 +70,14 @@ export default function registerAutoCommand(pi: ExtensionAPI) {
     description:
       "Send a message N times, waiting for each agent turn to finish before sending the next one. Usage: /auto <count> [message] | /auto stop",
     handler: async (args, ctx) => {
+      loop.attach(ctx);
+
       if (args.trim() === "stop") {
-        stopAuto(ctx);
+        if (!loop.stop()) ctx.ui.notify("No auto mode is running.", "warning");
         return;
       }
 
       const parsed = parseAutoArgs(args);
-
       if (!parsed) {
         ctx.ui.notify("Usage: /auto <count> [message] | /auto stop", "warning");
         return;
@@ -107,7 +85,6 @@ export default function registerAutoCommand(pi: ExtensionAPI) {
 
       const message =
         parsed.message ?? getLastUserMessageText(ctx.sessionManager.getBranch());
-
       if (!message) {
         ctx.ui.notify(
           "No previous user message found. Usage: /auto <count> [message]",
@@ -116,33 +93,7 @@ export default function registerAutoCommand(pi: ExtensionAPI) {
         return;
       }
 
-      if (autoTimer) clearTimeout(autoTimer);
-
-      autoRun = { message, remaining: parsed.count };
-      ctx.ui.notify(
-        `Auto mode: sending "${message}" ${parsed.count} time(s).`,
-        "info",
-      );
-
-      const tick = () => {
-        if (!autoRun || autoRun.remaining < 1) {
-          autoTimer = undefined;
-          autoRun = undefined;
-          ctx.ui.notify("Auto mode complete.", "info");
-          return;
-        }
-
-        if (!ctx.isIdle()) {
-          autoTimer = setTimeout(tick, POLL_INTERVAL_MS);
-          return;
-        }
-
-        autoRun.remaining -= 1;
-        pi.sendUserMessage(autoRun.message);
-        autoTimer = setTimeout(tick, POLL_INTERVAL_MS);
-      };
-
-      autoTimer = setTimeout(tick, 0);
+      loop.start(message, parsed.count);
     },
   });
 }
