@@ -134,6 +134,83 @@ describe("AutoLoop", () => {
     expect(loop.edit("x")).toBe(false);
   });
 
+  it("defers a message until the final round", () => {
+    vi.useFakeTimers();
+    const send = vi.fn();
+    const loop = new AutoLoop(send);
+    loop.attach(createPort(true));
+
+    loop.start("continue", 3);
+    vi.advanceTimersByTime(0);
+
+    expect(loop.defer("final task")).toBe(true);
+    vi.advanceTimersByTime(500);
+
+    expect(send).toHaveBeenNthCalledWith(1, "continue");
+    expect(send).toHaveBeenNthCalledWith(2, "continue");
+    expect(send).toHaveBeenNthCalledWith(3, "final task");
+
+    vi.useRealTimers();
+  });
+
+  it("defer returns false when nothing is running", () => {
+    const loop = new AutoLoop(vi.fn());
+    expect(loop.defer("final task")).toBe(false);
+  });
+
+  it("defers the latest observed steering message and replaces it once", () => {
+    vi.useFakeTimers();
+    const send = vi.fn();
+    const loop = new AutoLoop(send);
+    loop.attach(createPort(true));
+
+    loop.start("continue", 2);
+    vi.advanceTimersByTime(0);
+
+    expect(loop.rememberSteering("final task")).toBe(true);
+    expect(loop.deferLatestSteering()).toEqual({
+      message: "final task",
+      target: "auto",
+    });
+    expect(loop.consumeDeferredSteering("other task")).toBe(false);
+    expect(loop.consumeDeferredSteering("final task")).toBe(true);
+    expect(loop.consumeDeferredSteering("final task")).toBe(false);
+
+    vi.advanceTimersByTime(250);
+    expect(send).toHaveBeenNthCalledWith(1, "continue");
+    expect(send).toHaveBeenNthCalledWith(2, "final task");
+
+    vi.useRealTimers();
+  });
+
+  it("forgets observed steering once it is delivered normally", () => {
+    const loop = new AutoLoop(vi.fn());
+    loop.attach(createPort(false));
+    loop.start("continue", 2);
+
+    loop.rememberSteering("already delivered");
+    loop.forgetSteering("already delivered");
+
+    expect(loop.deferLatestSteering()).toBeUndefined();
+  });
+
+  it("defers observed steering without a running auto mode", () => {
+    const loop = new AutoLoop(vi.fn());
+
+    expect(loop.rememberSteering("final task")).toBe(true);
+    expect(loop.deferLatestSteering()).toEqual({
+      message: "final task",
+      target: "followUp",
+    });
+    expect(loop.consumeDeferredSteering("final task")).toBe(true);
+  });
+
+  it("cannot defer when no steering message was observed", () => {
+    const loop = new AutoLoop(vi.fn());
+    expect(loop.deferLatestSteering()).toBeUndefined();
+    expect(loop.consumeDeferredSteering("final task")).toBe(false);
+  });
+
   it("start cancels a prior run and starts fresh", () => {
     vi.useFakeTimers();
     const send = vi.fn();

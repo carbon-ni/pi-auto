@@ -10,7 +10,11 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
 
-import { getLastUserMessageText, parseAutoArgs } from "../lib/auto-helpers.js";
+import {
+  getLastUserMessageText,
+  parseAutoArgs,
+  textFromContent,
+} from "../lib/auto-helpers.js";
 import { AutoLoop } from "./auto-loop.js";
 
 export default function registerAutoCommand(pi: ExtensionAPI) {
@@ -38,6 +42,31 @@ export default function registerAutoCommand(pi: ExtensionAPI) {
     },
   });
 
+  pi.on("input", (event, ctx) => {
+    if (event.source !== "interactive" || ctx.isIdle()) return;
+
+    loop.attach(ctx);
+    loop.rememberSteering(event.text);
+  });
+
+  pi.on("message_end", (event) => {
+    if (event.message.role !== "user") return;
+
+    const message = textFromContent(event.message.content);
+    if (!message) return;
+    if (!loop.consumeDeferredSteering(message)) {
+      loop.forgetSteering(message);
+      return;
+    }
+
+    return {
+      message: {
+        ...event.message,
+        content: [{ type: "text" as const, text: "continue" }],
+      },
+    };
+  });
+
   // The captured port goes stale when another extension (or the user) swaps the
   // session via newSession/fork/switchSession/reload. Auto is bound to the
   // session it started in, so detaching on replacement is the correct behavior.
@@ -63,6 +92,60 @@ export default function registerAutoCommand(pi: ExtensionAPI) {
       }
 
       ctx.ui.notify(`Auto mode message updated to "${editedMessage}".`, "info");
+    },
+  });
+
+  pi.registerCommand("defer", {
+    description:
+      "Send a different message on the final round of a running auto mode. Usage: /defer <message>",
+    handler: async (args, ctx) => {
+      loop.attach(ctx);
+
+      const deferredMessage = args.trim();
+      if (!deferredMessage) {
+        const deferredSteering = loop.deferLatestSteering();
+        if (!deferredSteering) {
+          ctx.ui.notify(
+            "No queued steering message found. Usage: /defer <message>",
+            "warning",
+          );
+          return;
+        }
+
+        if (deferredSteering.target === "followUp") {
+          pi.sendUserMessage(deferredSteering.message, { deliverAs: "followUp" });
+          ctx.ui.notify(
+            `Deferred queued steering message "${deferredSteering.message}" as a follow-up.`,
+            "info",
+          );
+          return;
+        }
+
+        ctx.ui.notify(
+          `Deferred queued steering message "${deferredSteering.message}" until the final auto round.`,
+          "info",
+        );
+        return;
+      }
+
+      if (loop.defer(deferredMessage)) {
+        ctx.ui.notify(
+          `Deferred "${deferredMessage}" until the final auto round.`,
+          "info",
+        );
+        return;
+      }
+
+      if (ctx.isIdle()) {
+        ctx.ui.notify(
+          "Nothing is running. Start work before deferring a message.",
+          "warning",
+        );
+        return;
+      }
+
+      pi.sendUserMessage(deferredMessage, { deliverAs: "followUp" });
+      ctx.ui.notify(`Deferred "${deferredMessage}" as a follow-up.`, "info");
     },
   });
 

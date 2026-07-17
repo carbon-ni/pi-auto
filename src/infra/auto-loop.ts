@@ -24,6 +24,7 @@ export type LoopPort = {
 
 type AutoRun = {
   message: string;
+  deferredMessage?: string;
   remaining: number;
 };
 
@@ -31,6 +32,8 @@ export class AutoLoop {
   private port?: LoopPort;
   private timer?: NodeJS.Timeout;
   private run?: AutoRun;
+  private latestSteering?: string;
+  private steeringToReplace?: string;
 
   constructor(private readonly send: (message: string) => void) {}
 
@@ -42,6 +45,8 @@ export class AutoLoop {
   detach(): void {
     this.clearTimer();
     this.run = undefined;
+    this.latestSteering = undefined;
+    this.steeringToReplace = undefined;
     this.port = undefined;
   }
 
@@ -75,6 +80,45 @@ export class AutoLoop {
     return true;
   }
 
+  /** Uses a message only for the final unsent round. */
+  defer(message: string): boolean {
+    if (!this.run || this.run.remaining < 1) return false;
+    this.run.deferredMessage = message;
+    return true;
+  }
+
+  rememberSteering(message: string): boolean {
+    this.latestSteering = message;
+    return true;
+  }
+
+  deferLatestSteering():
+    | { message: string; target: "auto" | "followUp" }
+    | undefined {
+    if (!this.latestSteering) return undefined;
+
+    const message = this.latestSteering;
+    this.latestSteering = undefined;
+    this.steeringToReplace = message;
+
+    if (this.run && this.run.remaining > 0) {
+      this.run.deferredMessage = message;
+      return { message, target: "auto" };
+    }
+
+    return { message, target: "followUp" };
+  }
+
+  consumeDeferredSteering(message: string): boolean {
+    if (this.steeringToReplace !== message) return false;
+    this.steeringToReplace = undefined;
+    return true;
+  }
+
+  forgetSteering(message: string): void {
+    if (this.latestSteering === message) this.latestSteering = undefined;
+  }
+
   private clearTimer(): void {
     if (this.timer) clearTimeout(this.timer);
     this.timer = undefined;
@@ -99,8 +143,12 @@ export class AutoLoop {
       return;
     }
 
+    const message =
+      this.run.remaining === 1 && this.run.deferredMessage
+        ? this.run.deferredMessage
+        : this.run.message;
     this.run.remaining -= 1;
-    this.send(this.run.message);
+    this.send(message);
     this.timer = setTimeout(() => this.tick(), POLL_INTERVAL_MS);
   }
 }

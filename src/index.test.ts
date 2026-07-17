@@ -140,11 +140,12 @@ function createMockCtx(isIdle = true, branch: unknown[] = []) {
 }
 
 describe("registerAutoCommand", () => {
-  it("registers the auto and auto-edit commands", () => {
+  it("registers the auto, auto-edit, and defer commands", () => {
     const pi = createMockPi();
     registerAutoCommand(pi as any);
     expect(pi.registerCommand).toHaveBeenCalledWith("auto", expect.any(Object));
     expect(pi.registerCommand).toHaveBeenCalledWith("auto-edit", expect.any(Object));
+    expect(pi.registerCommand).toHaveBeenCalledWith("defer", expect.any(Object));
   });
 
   it("warns on invalid args", async () => {
@@ -249,6 +250,173 @@ describe("registerAutoCommand", () => {
     await pi._commands["auto-edit"].handler("   ", ctx);
 
     expect(ctx.ui.notify).toHaveBeenCalledWith("Usage: /auto-edit <message>", "warning");
+  });
+
+  it("sends a deferred message only on the final auto round", async () => {
+    vi.useFakeTimers();
+    const pi = createMockPi();
+    registerAutoCommand(pi as any);
+    const ctx = createMockCtx(true);
+
+    await pi._commands.auto.handler("3 continue", ctx);
+    vi.advanceTimersByTime(0);
+    await pi._commands.defer.handler("final task", ctx);
+    vi.advanceTimersByTime(500);
+
+    expect(pi.sendUserMessage).toHaveBeenNthCalledWith(1, "continue");
+    expect(pi.sendUserMessage).toHaveBeenNthCalledWith(2, "continue");
+    expect(pi.sendUserMessage).toHaveBeenNthCalledWith(3, "final task");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      'Deferred "final task" until the final auto round.',
+      "info",
+    );
+
+    vi.useRealTimers();
+  });
+
+  it("queues an explicit deferred message as a follow-up without auto mode", async () => {
+    const pi = createMockPi();
+    registerAutoCommand(pi as any);
+    const ctx = createMockCtx(false);
+
+    await pi._commands.defer.handler("final task", ctx);
+
+    expect(pi.sendUserMessage).toHaveBeenCalledWith("final task", {
+      deliverAs: "followUp",
+    });
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      'Deferred "final task" as a follow-up.',
+      "info",
+    );
+  });
+
+  it("warns when an explicit defer has no active work", async () => {
+    const pi = createMockPi();
+    registerAutoCommand(pi as any);
+    const ctx = createMockCtx(true);
+
+    await pi._commands.defer.handler("final task", ctx);
+
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      "Nothing is running. Start work before deferring a message.",
+      "warning",
+    );
+  });
+
+  it("defers the latest queued steering message when no argument is given", async () => {
+    vi.useFakeTimers();
+    const pi = createMockPi();
+    registerAutoCommand(pi as any);
+    let idle = true;
+    const ctx = {
+      ...createMockCtx(),
+      isIdle: () => idle,
+    };
+
+    await pi._commands.auto.handler("2 continue", ctx);
+    vi.advanceTimersByTime(0);
+
+    idle = false;
+    await pi._handlers.input[0](
+      { text: "final task", source: "interactive" },
+      ctx,
+    );
+    await pi._commands.defer.handler("", ctx);
+
+    const steeringMessage = {
+      role: "user",
+      content: [{ type: "text", text: "final task" }],
+      timestamp: 123,
+    };
+    const replacement = await pi._handlers.message_end[0](
+      { type: "message_end", message: steeringMessage },
+      ctx,
+    );
+    idle = true;
+    vi.advanceTimersByTime(250);
+
+    expect(replacement).toEqual({
+      message: {
+        ...steeringMessage,
+        content: [{ type: "text", text: "continue" }],
+      },
+    });
+    expect(pi.sendUserMessage).toHaveBeenNthCalledWith(1, "continue");
+    expect(pi.sendUserMessage).toHaveBeenNthCalledWith(2, "final task");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      'Deferred queued steering message "final task" until the final auto round.',
+      "info",
+    );
+
+    vi.useRealTimers();
+  });
+
+  it("defers queued steering as a follow-up without auto mode", async () => {
+    const pi = createMockPi();
+    registerAutoCommand(pi as any);
+    const ctx = createMockCtx(false);
+
+    await pi._handlers.input[0](
+      { text: "do this later", source: "interactive" },
+      ctx,
+    );
+    await pi._commands.defer.handler("", ctx);
+
+    const steeringMessage = {
+      role: "user",
+      content: [{ type: "text", text: "do this later" }],
+      timestamp: 123,
+    };
+    const replacement = await pi._handlers.message_end[0](
+      { type: "message_end", message: steeringMessage },
+      ctx,
+    );
+
+    expect(replacement?.message.content).toEqual([
+      { type: "text", text: "continue" },
+    ]);
+    expect(pi.sendUserMessage).toHaveBeenCalledWith("do this later", {
+      deliverAs: "followUp",
+    });
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      'Deferred queued steering message "do this later" as a follow-up.',
+      "info",
+    );
+  });
+
+  it("does not record extension-generated auto messages as steering", async () => {
+    vi.useFakeTimers();
+    const pi = createMockPi();
+    registerAutoCommand(pi as any);
+    const ctx = createMockCtx(true);
+
+    await pi._commands.auto.handler("2 continue", ctx);
+    vi.advanceTimersByTime(0);
+    await pi._handlers.input[0](
+      { text: "continue", source: "extension" },
+      ctx,
+    );
+    await pi._commands.defer.handler("", ctx);
+
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      "No queued steering message found. Usage: /defer <message>",
+      "warning",
+    );
+
+    vi.useRealTimers();
+  });
+
+  it("warns when defer has no argument or observed steering message", async () => {
+    const pi = createMockPi();
+    registerAutoCommand(pi as any);
+    const ctx = createMockCtx();
+
+    await pi._commands.defer.handler("   ", ctx);
+
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      "No queued steering message found. Usage: /defer <message>",
+      "warning",
+    );
   });
 
   it("waits when not idle then sends when idle", async () => {
