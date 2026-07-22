@@ -110,7 +110,7 @@ describe("AutoLoop", () => {
     expect(port.ui.notify).not.toHaveBeenCalled();
   });
 
-  it("edit updates the message used by future sends", () => {
+  it("edit updates the remaining count and message used by future sends", () => {
     vi.useFakeTimers();
     const send = vi.fn();
     const loop = new AutoLoop(send);
@@ -119,7 +119,7 @@ describe("AutoLoop", () => {
     loop.start("first", 3);
     vi.advanceTimersByTime(0);
 
-    expect(loop.edit("second")).toBe(true);
+    expect(loop.edit("second", 2)).toBe(true);
     vi.advanceTimersByTime(500);
 
     expect(send).toHaveBeenNthCalledWith(1, "first");
@@ -131,7 +131,7 @@ describe("AutoLoop", () => {
 
   it("edit returns false when nothing is running", () => {
     const loop = new AutoLoop(vi.fn());
-    expect(loop.edit("x")).toBe(false);
+    expect(loop.edit("x", 1)).toBe(false);
   });
 
   it("defers a message until the final round", () => {

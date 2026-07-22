@@ -29,6 +29,18 @@ export function parseAutoArgs(args: string): AutoArgs | undefined {
   };
 }
 
+export function parseAutoEditArgs(args: string): AutoArgs | undefined {
+  const match = args.trim().match(/^(?:edit|e)\s+(\S+)\s+(.+)$/);
+  if (!match) return undefined;
+
+  const parsed = parseAutoArgs(`${match[1]} ${match[2]}`);
+  if (!parsed?.message) return undefined;
+
+  const quoted = parsed.message.match(/^(["'])(.*)\1$/);
+  const message = (quoted?.[2] ?? parsed.message).trim();
+  return message ? { count: parsed.count, message } : undefined;
+}
+
 export function textFromContent(content: unknown): string | undefined {
   if (typeof content === "string") return content.trim() || undefined;
   if (!Array.isArray(content)) return undefined;

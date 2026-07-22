@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { getLastUserMessageText, parseAutoArgs, textFromContent } from "./lib/auto-helpers.js";
+import {
+  getLastUserMessageText,
+  parseAutoArgs,
+  parseAutoEditArgs,
+  textFromContent,
+} from "./lib/auto-helpers.js";
 import registerAutoCommand from "./infra/register-auto-command.js";
 
 // --- lib/auto-helpers ---
@@ -36,6 +41,23 @@ describe("parseAutoArgs", () => {
   it("accepts count at upper bound (100)", () => {
     expect(parseAutoArgs("100 go")).toEqual({ count: 100, message: "go" });
   });
+});
+
+describe("parseAutoEditArgs", () => {
+  it.each([
+    ['edit 3 "keep going"', { count: 3, message: "keep going" }],
+    ['e 3 "keep going"', { count: 3, message: "keep going" }],
+    ["edit 3 keep going", { count: 3, message: "keep going" }],
+  ])("parses %j", (args, expected) => {
+    expect(parseAutoEditArgs(args)).toEqual(expected);
+  });
+
+  it.each(["edit", "e", "edit 0 message", "edit 3", "other message"])(
+    "rejects invalid arguments: %j",
+    (args) => {
+      expect(parseAutoEditArgs(args)).toBeUndefined();
+    },
+  );
 });
 
 describe("textFromContent", () => {
@@ -140,11 +162,11 @@ function createMockCtx(isIdle = true, branch: unknown[] = []) {
 }
 
 describe("registerAutoCommand", () => {
-  it("registers the auto, auto-edit, and defer commands", () => {
+  it("registers the auto and defer commands, without the deprecated auto-edit command", () => {
     const pi = createMockPi();
     registerAutoCommand(pi as any);
     expect(pi.registerCommand).toHaveBeenCalledWith("auto", expect.any(Object));
-    expect(pi.registerCommand).toHaveBeenCalledWith("auto-edit", expect.any(Object));
+    expect(pi.registerCommand).not.toHaveBeenCalledWith("auto-edit", expect.any(Object));
     expect(pi.registerCommand).toHaveBeenCalledWith("defer", expect.any(Object));
   });
 
@@ -153,7 +175,10 @@ describe("registerAutoCommand", () => {
     registerAutoCommand(pi as any);
     const ctx = createMockCtx();
     await pi._commands.auto.handler("", ctx);
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Usage: /auto <count> [message] | /auto stop", "warning");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      'Usage: /auto <count> [message] | /auto stop | /auto edit|e <number> "<message>"',
+      "warning",
+    );
   });
 
   it("warns when no message found", async () => {
@@ -219,7 +244,7 @@ describe("registerAutoCommand", () => {
     await pi._commands.auto.handler("3 first", ctx);
     vi.advanceTimersByTime(0);
 
-    await pi._commands["auto-edit"].handler("second", ctx);
+    await pi._commands.auto.handler('edit 2 "second"', ctx);
     vi.advanceTimersByTime(500);
 
     expect(pi.sendUserMessage).toHaveBeenNthCalledWith(1, "first");
@@ -234,7 +259,7 @@ describe("registerAutoCommand", () => {
     registerAutoCommand(pi as any);
     const ctx = createMockCtx();
 
-    await pi._commands["auto-edit"].handler("second", ctx);
+    await pi._commands.auto.handler('e 2 "second"', ctx);
 
     expect(ctx.ui.notify).toHaveBeenCalledWith(
       "Auto mode is not running. Start it with /auto <count> [message].",
@@ -242,14 +267,17 @@ describe("registerAutoCommand", () => {
     );
   });
 
-  it("warns when auto-edit message is empty", async () => {
+  it("warns when auto edit message is empty", async () => {
     const pi = createMockPi();
     registerAutoCommand(pi as any);
     const ctx = createMockCtx();
 
-    await pi._commands["auto-edit"].handler("   ", ctx);
+    await pi._commands.auto.handler("edit   ", ctx);
 
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Usage: /auto-edit <message>", "warning");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      'Usage: /auto edit|e <number> "<message>"',
+      "warning",
+    );
   });
 
   it("sends a deferred message only on the final auto round", async () => {

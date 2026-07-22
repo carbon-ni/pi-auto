@@ -1,7 +1,7 @@
 /**
  * Extension registration — pure wiring.
  *
- * Builds one `AutoLoop` and binds the `/auto`, `/auto-edit` commands, the
+ * Builds one `AutoLoop` and binds the `/auto` and `/defer` commands, the
  * `auto_stop` tool, and the `session_shutdown` lifecycle hook to it. All state
  * and timer logic lives in `AutoLoop`; this module only translates command
  * arguments and tool results.
@@ -13,6 +13,7 @@ import { Type } from "typebox";
 import {
   getLastUserMessageText,
   parseAutoArgs,
+  parseAutoEditArgs,
   textFromContent,
 } from "../lib/auto-helpers.js";
 import { AutoLoop } from "./auto-loop.js";
@@ -72,29 +73,6 @@ export default function registerAutoCommand(pi: ExtensionAPI) {
   // session it started in, so detaching on replacement is the correct behavior.
   pi.on("session_shutdown", () => loop.detach());
 
-  pi.registerCommand("auto-edit", {
-    description: "Edit the message used by a running auto mode. Usage: /auto-edit <message>",
-    handler: async (args, ctx) => {
-      loop.attach(ctx);
-
-      const editedMessage = args.trim();
-      if (!editedMessage) {
-        ctx.ui.notify("Usage: /auto-edit <message>", "warning");
-        return;
-      }
-
-      if (!loop.edit(editedMessage)) {
-        ctx.ui.notify(
-          "Auto mode is not running. Start it with /auto <count> [message].",
-          "warning",
-        );
-        return;
-      }
-
-      ctx.ui.notify(`Auto mode message updated to "${editedMessage}".`, "info");
-    },
-  });
-
   pi.registerCommand("defer", {
     description:
       "Send a different message on the final round of a running auto mode. Usage: /defer <message>",
@@ -151,9 +129,31 @@ export default function registerAutoCommand(pi: ExtensionAPI) {
 
   pi.registerCommand("auto", {
     description:
-      "Send a message N times, waiting for each agent turn to finish before sending the next one. Usage: /auto <count> [message] | /auto stop",
+      'Send a message N times, waiting for each agent turn to finish before sending the next one. Usage: /auto <count> [message] | /auto stop | /auto edit|e <number> "<message>"',
     handler: async (args, ctx) => {
       loop.attach(ctx);
+
+      const editedRun = parseAutoEditArgs(args);
+      if (/^(?:edit|e)(?:\s|$)/.test(args.trim())) {
+        if (!editedRun) {
+          ctx.ui.notify('Usage: /auto edit|e <number> "<message>"', "warning");
+          return;
+        }
+
+        if (!loop.edit(editedRun.message!, editedRun.count)) {
+          ctx.ui.notify(
+            "Auto mode is not running. Start it with /auto <count> [message].",
+            "warning",
+          );
+          return;
+        }
+
+        ctx.ui.notify(
+          `Auto mode updated: sending "${editedRun.message}" ${editedRun.count} time(s).`,
+          "info",
+        );
+        return;
+      }
 
       if (args.trim() === "stop") {
         if (!loop.stop()) ctx.ui.notify("No auto mode is running.", "warning");
@@ -162,7 +162,10 @@ export default function registerAutoCommand(pi: ExtensionAPI) {
 
       const parsed = parseAutoArgs(args);
       if (!parsed) {
-        ctx.ui.notify("Usage: /auto <count> [message] | /auto stop", "warning");
+        ctx.ui.notify(
+          'Usage: /auto <count> [message] | /auto stop | /auto edit|e <number> "<message>"',
+          "warning",
+        );
         return;
       }
 

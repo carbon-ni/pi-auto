@@ -73,10 +73,12 @@ export class AutoLoop {
     return wasRunning;
   }
 
-  /** Updates the message for future sends. Returns whether a run was active. */
-  edit(message: string): boolean {
+  /** Updates the remaining count and message for future sends. */
+  edit(message: string, count: number): boolean {
     if (!this.run) return false;
     this.run.message = message;
+    this.run.remaining = count;
+    this.run.deferredMessage = undefined;
     return true;
   }
 
