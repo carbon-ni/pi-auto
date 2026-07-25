@@ -158,6 +158,21 @@ describe("AutoLoop", () => {
     expect(loop.defer("final task")).toBe(false);
   });
 
+  it("removes the deferred message from a running auto mode", () => {
+    const loop = new AutoLoop(vi.fn());
+    loop.attach(createPort(false));
+    loop.start("continue", 2);
+    loop.defer("final task");
+
+    expect(loop.removeDeferred()).toBe("final task");
+    expect(loop.removeDeferred()).toBeUndefined();
+  });
+
+  it("returns no removed message when nothing is deferred", () => {
+    const loop = new AutoLoop(vi.fn());
+    expect(loop.removeDeferred()).toBeUndefined();
+  });
+
   it("defers the latest observed steering message and replaces it once", () => {
     vi.useFakeTimers();
     const send = vi.fn();

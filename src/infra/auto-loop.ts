@@ -89,6 +89,14 @@ export class AutoLoop {
     return true;
   }
 
+  /** Removes and returns the message deferred for the final unsent round. */
+  removeDeferred(): string | undefined {
+    if (!this.run?.deferredMessage) return undefined;
+    const message = this.run.deferredMessage;
+    this.run.deferredMessage = undefined;
+    return message;
+  }
+
   rememberSteering(message: string): boolean {
     this.latestSteering = message;
     return true;

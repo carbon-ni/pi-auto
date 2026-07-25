@@ -280,6 +280,41 @@ describe("registerAutoCommand", () => {
     );
   });
 
+  it("removes the last deferred auto message", async () => {
+    vi.useFakeTimers();
+    const pi = createMockPi();
+    registerAutoCommand(pi as any);
+    const ctx = createMockCtx(true);
+
+    await pi._commands.auto.handler("2 continue", ctx);
+    vi.advanceTimersByTime(0);
+    await pi._commands.defer.handler("final task", ctx);
+    await pi._commands.defer.handler("remove", ctx);
+    vi.advanceTimersByTime(250);
+
+    expect(pi.sendUserMessage).toHaveBeenNthCalledWith(1, "continue");
+    expect(pi.sendUserMessage).toHaveBeenNthCalledWith(2, "continue");
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      'Removed deferred message "final task".',
+      "info",
+    );
+
+    vi.useRealTimers();
+  });
+
+  it("warns when there is no deferred auto message to remove", async () => {
+    const pi = createMockPi();
+    registerAutoCommand(pi as any);
+    const ctx = createMockCtx();
+
+    await pi._commands.defer.handler("remove", ctx);
+
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      "No deferred message to remove.",
+      "warning",
+    );
+  });
+
   it("sends a deferred message only on the final auto round", async () => {
     vi.useFakeTimers();
     const pi = createMockPi();

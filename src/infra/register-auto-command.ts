@@ -75,11 +75,22 @@ export default function registerAutoCommand(pi: ExtensionAPI) {
 
   pi.registerCommand("defer", {
     description:
-      "Send a different message on the final round of a running auto mode. Usage: /defer <message>",
+      "Send a different message on the final round of a running auto mode. Usage: /defer <message> | /defer remove",
     handler: async (args, ctx) => {
       loop.attach(ctx);
 
       const deferredMessage = args.trim();
+      if (deferredMessage === "remove") {
+        const removedMessage = loop.removeDeferred();
+        if (!removedMessage) {
+          ctx.ui.notify("No deferred message to remove.", "warning");
+          return;
+        }
+
+        ctx.ui.notify(`Removed deferred message "${removedMessage}".`, "info");
+        return;
+      }
+
       if (!deferredMessage) {
         const deferredSteering = loop.deferLatestSteering();
         if (!deferredSteering) {
