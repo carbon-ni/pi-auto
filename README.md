@@ -17,10 +17,12 @@ Repeats the previous user message three times. Each message is sent only after t
 Overrides the previous-message behavior and sends `keep going` three times, waiting for idle between sends.
 
 ```text
-/auto-edit keep going with this instead
+/auto edit 3 "keep going with this instead"
 ```
 
-Changes the message for a running auto mode. Future sends use the edited message.
+Changes the message and remaining count for a running auto mode.
+
+Canceling the current agent run with Pi's interrupt key also stops the entire auto loop. The default interrupt key is `Escape`; custom bindings such as `Ctrl+Q` work too.
 
 The agent can also stop the loop early by calling the `auto_stop` tool:
 

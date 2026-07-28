@@ -507,6 +507,58 @@ describe("registerAutoCommand", () => {
     vi.useRealTimers();
   });
 
+  it("stops auto when the current agent run is aborted", async () => {
+    vi.useFakeTimers();
+    const pi = createMockPi();
+    registerAutoCommand(pi as any);
+    const ctx = createMockCtx(true);
+
+    await pi._commands.auto.handler("10 continue", ctx);
+    vi.advanceTimersByTime(0);
+    expect(pi.sendUserMessage).toHaveBeenCalledTimes(1);
+
+    await pi._handlers.agent_end[0](
+      {
+        type: "agent_end",
+        messages: [
+          { role: "assistant", content: [], stopReason: "aborted" },
+        ],
+      },
+      ctx,
+    );
+
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Auto mode stopped.", "info");
+    vi.advanceTimersByTime(1000);
+    expect(pi.sendUserMessage).toHaveBeenCalledTimes(1);
+
+    vi.useRealTimers();
+  });
+
+  it("keeps auto running after a normally completed agent run", async () => {
+    vi.useFakeTimers();
+    const pi = createMockPi();
+    registerAutoCommand(pi as any);
+    const ctx = createMockCtx(true);
+
+    await pi._commands.auto.handler("2 continue", ctx);
+    vi.advanceTimersByTime(0);
+
+    await pi._handlers.agent_end[0](
+      {
+        type: "agent_end",
+        messages: [
+          { role: "assistant", content: [], stopReason: "stop" },
+        ],
+      },
+      ctx,
+    );
+
+    vi.advanceTimersByTime(250);
+    expect(pi.sendUserMessage).toHaveBeenCalledTimes(2);
+
+    vi.useRealTimers();
+  });
+
   it("stops auto on /auto stop", async () => {
     vi.useFakeTimers();
     const pi = createMockPi();

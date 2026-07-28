@@ -68,6 +68,17 @@ export default function registerAutoCommand(pi: ExtensionAPI) {
     };
   });
 
+  pi.on("agent_end", (event, ctx) => {
+    const wasAborted = event.messages.some(
+      (message) =>
+        message.role === "assistant" && message.stopReason === "aborted",
+    );
+    if (!wasAborted) return;
+
+    loop.attach(ctx);
+    loop.stop();
+  });
+
   // The captured port goes stale when another extension (or the user) swaps the
   // session via newSession/fork/switchSession/reload. Auto is bound to the
   // session it started in, so detaching on replacement is the correct behavior.
