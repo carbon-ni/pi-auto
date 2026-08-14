@@ -284,12 +284,15 @@ describe('registerAutoCommand', () => {
     vi.advanceTimersByTime(0);
     expect(pi.sendUserMessage).toHaveBeenCalledTimes(1);
 
+    emit(pi, 'agent_settled', { type: 'agent_settled' });
     vi.advanceTimersByTime(250);
     expect(pi.sendUserMessage).toHaveBeenCalledTimes(2);
 
+    emit(pi, 'agent_settled', { type: 'agent_settled' });
     vi.advanceTimersByTime(250);
     expect(pi.sendUserMessage).toHaveBeenCalledTimes(3);
 
+    emit(pi, 'agent_settled', { type: 'agent_settled' });
     vi.advanceTimersByTime(250);
     expect(pi.sendUserMessage).toHaveBeenCalledTimes(3);
 
@@ -315,12 +318,15 @@ describe('registerAutoCommand', () => {
     vi.advanceTimersByTime(0);
     expect(ctx.ui.setStatus).toHaveBeenLastCalledWith('pi-auto', 'auto 1/3');
 
+    emit(pi, 'agent_settled', { type: 'agent_settled' });
     vi.advanceTimersByTime(250);
     expect(ctx.ui.setStatus).toHaveBeenLastCalledWith('pi-auto', 'auto 2/3');
 
+    emit(pi, 'agent_settled', { type: 'agent_settled' });
     vi.advanceTimersByTime(250);
     expect(ctx.ui.setStatus).toHaveBeenLastCalledWith('pi-auto', 'auto 3/3');
 
+    emit(pi, 'agent_settled', { type: 'agent_settled' });
     vi.advanceTimersByTime(250);
     expect(ctx.ui.setStatus).toHaveBeenLastCalledWith('pi-auto', undefined);
 
@@ -335,9 +341,12 @@ describe('registerAutoCommand', () => {
 
     await pi._commands.auto.handler('3 first', ctx);
     vi.advanceTimersByTime(0);
+    emit(pi, 'agent_settled', { type: 'agent_settled' });
 
     await pi._commands.auto.handler('edit 2 "second"', ctx);
-    vi.advanceTimersByTime(500);
+    vi.advanceTimersByTime(250);
+    emit(pi, 'agent_settled', { type: 'agent_settled' });
+    vi.advanceTimersByTime(250);
 
     expect(pi.sendUserMessage).toHaveBeenNthCalledWith(1, 'first');
     expect(pi.sendUserMessage).toHaveBeenNthCalledWith(2, 'second');
@@ -380,6 +389,7 @@ describe('registerAutoCommand', () => {
 
     await pi._commands.auto.handler('2 continue', ctx);
     vi.advanceTimersByTime(0);
+    emit(pi, 'agent_settled', { type: 'agent_settled' });
     await pi._commands.defer.handler('final task', ctx);
     await pi._commands.defer.handler('remove', ctx);
     vi.advanceTimersByTime(250);
@@ -416,7 +426,10 @@ describe('registerAutoCommand', () => {
     await pi._commands.auto.handler('3 continue', ctx);
     vi.advanceTimersByTime(0);
     await pi._commands.defer.handler('final task', ctx);
-    vi.advanceTimersByTime(500);
+    emit(pi, 'agent_settled', { type: 'agent_settled' });
+    vi.advanceTimersByTime(250);
+    emit(pi, 'agent_settled', { type: 'agent_settled' });
+    vi.advanceTimersByTime(250);
 
     expect(pi.sendUserMessage).toHaveBeenNthCalledWith(1, 'continue');
     expect(pi.sendUserMessage).toHaveBeenNthCalledWith(2, 'continue');
@@ -488,6 +501,7 @@ describe('registerAutoCommand', () => {
       ctx,
     );
     idle = true;
+    emit(pi, 'agent_settled', { type: 'agent_settled' });
     vi.advanceTimersByTime(250);
 
     expect(replacement).toEqual({
@@ -632,6 +646,7 @@ describe('registerAutoCommand', () => {
 
     await pi._commands.auto.handler('2 continue', ctx);
     vi.advanceTimersByTime(0);
+    expect(pi.sendUserMessage).toHaveBeenCalledTimes(1);
 
     await pi._handlers.agent_end[0](
       {
@@ -640,9 +655,103 @@ describe('registerAutoCommand', () => {
       },
       ctx,
     );
+    emit(pi, 'agent_settled', { type: 'agent_settled' });
 
     vi.advanceTimersByTime(250);
     expect(pi.sendUserMessage).toHaveBeenCalledTimes(2);
+
+    vi.useRealTimers();
+  });
+
+  it('registers the compaction and settle event handlers', () => {
+    const pi = createMockPi();
+    register(pi);
+    expect(pi._handlers.session_before_compact).toHaveLength(1);
+    expect(pi._handlers.session_compact).toHaveLength(1);
+    expect(pi._handlers.agent_settled).toHaveLength(1);
+  });
+
+  it('waits for the harness to finish compacting before sending', async () => {
+    vi.useFakeTimers();
+    const pi = createMockPi();
+    register(pi);
+    const ctx = createMockCtx(true);
+
+    await pi._commands.auto.handler('2 continue', ctx);
+    vi.advanceTimersByTime(0);
+    expect(pi.sendUserMessage).toHaveBeenCalledTimes(1);
+
+    // Auto-compaction runs before the next send is allowed.
+    await pi._handlers.session_before_compact[0](
+      { type: 'session_before_compact' },
+      ctx,
+    );
+    vi.advanceTimersByTime(250);
+    expect(pi.sendUserMessage).toHaveBeenCalledTimes(1);
+
+    await pi._handlers.session_compact[0]({ type: 'session_compact' }, ctx);
+    await pi._handlers.agent_settled[0]({ type: 'agent_settled' }, ctx);
+    vi.advanceTimersByTime(250);
+    expect(pi.sendUserMessage).toHaveBeenCalledTimes(2);
+
+    vi.useRealTimers();
+  });
+
+  it('waits for a manual compaction running between turns', async () => {
+    vi.useFakeTimers();
+    const pi = createMockPi();
+    register(pi);
+    const ctx = createMockCtx(true);
+
+    await pi._commands.auto.handler('3 continue', ctx);
+    vi.advanceTimersByTime(0);
+    await pi._handlers.agent_settled[0]({ type: 'agent_settled' }, ctx);
+    vi.advanceTimersByTime(250);
+    expect(pi.sendUserMessage).toHaveBeenCalledTimes(2);
+    await pi._handlers.agent_settled[0]({ type: 'agent_settled' }, ctx);
+
+    // /compact while the loop is idle between turns.
+    await pi._handlers.session_before_compact[0](
+      { type: 'session_before_compact' },
+      ctx,
+    );
+    vi.advanceTimersByTime(250);
+    expect(pi.sendUserMessage).toHaveBeenCalledTimes(2);
+
+    await pi._handlers.session_compact[0]({ type: 'session_compact' }, ctx);
+    vi.advanceTimersByTime(250);
+    expect(pi.sendUserMessage).toHaveBeenCalledTimes(3);
+
+    vi.useRealTimers();
+  });
+
+  it('recovers when compaction never reports completion', async () => {
+    vi.useFakeTimers();
+    const pi = createMockPi();
+    register(pi);
+    const ctx = createMockCtx(true);
+
+    await pi._commands.auto.handler('3 continue', ctx);
+    vi.advanceTimersByTime(0);
+    await pi._handlers.agent_settled[0]({ type: 'agent_settled' }, ctx);
+    vi.advanceTimersByTime(250);
+    expect(pi.sendUserMessage).toHaveBeenCalledTimes(2);
+
+    // e.g. a manual /compact that was aborted: no session_compact follows.
+    await pi._handlers.session_before_compact[0](
+      { type: 'session_before_compact' },
+      ctx,
+    );
+    vi.advanceTimersByTime(250);
+    expect(pi.sendUserMessage).toHaveBeenCalledTimes(2);
+
+    vi.advanceTimersByTime(10 * 60 * 1000 + 250);
+    expect(pi.sendUserMessage).toHaveBeenCalledTimes(3);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      'Auto mode: compaction did not report completion; resuming.',
+      'warning',
+    );
+    expect(ctx.ui.notify).toHaveBeenCalledWith('Auto mode complete.', 'info');
 
     vi.useRealTimers();
   });

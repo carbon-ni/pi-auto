@@ -46,12 +46,15 @@ describe('AutoLoop', () => {
     vi.advanceTimersByTime(0);
     expect(send).toHaveBeenCalledTimes(1);
 
+    loop.onAgentSettled();
     vi.advanceTimersByTime(250);
     expect(send).toHaveBeenCalledTimes(2);
 
+    loop.onAgentSettled();
     vi.advanceTimersByTime(250);
     expect(send).toHaveBeenCalledTimes(3);
 
+    loop.onAgentSettled();
     vi.advanceTimersByTime(250);
     expect(send).toHaveBeenCalledTimes(3);
     expect(loop.isRunning()).toBe(false);
@@ -121,9 +124,12 @@ describe('AutoLoop', () => {
 
     loop.start('first', 3);
     vi.advanceTimersByTime(0);
+    loop.onAgentSettled();
 
     expect(loop.edit('second', 2)).toBe(true);
-    vi.advanceTimersByTime(500);
+    vi.advanceTimersByTime(250);
+    loop.onAgentSettled();
+    vi.advanceTimersByTime(250);
 
     expect(send).toHaveBeenNthCalledWith(1, 'first');
     expect(send).toHaveBeenNthCalledWith(2, 'second');
@@ -147,7 +153,10 @@ describe('AutoLoop', () => {
     vi.advanceTimersByTime(0);
 
     expect(loop.defer('final task')).toBe(true);
-    vi.advanceTimersByTime(500);
+    loop.onAgentSettled();
+    vi.advanceTimersByTime(250);
+    loop.onAgentSettled();
+    vi.advanceTimersByTime(250);
 
     expect(send).toHaveBeenNthCalledWith(1, 'continue');
     expect(send).toHaveBeenNthCalledWith(2, 'continue');
@@ -184,6 +193,7 @@ describe('AutoLoop', () => {
 
     loop.start('continue', 2);
     vi.advanceTimersByTime(0);
+    loop.onAgentSettled();
 
     expect(loop.rememberSteering('final task')).toBe(true);
     expect(loop.deferLatestSteering()).toEqual({
@@ -312,12 +322,15 @@ describe('AutoLoop status bar', () => {
     vi.advanceTimersByTime(0);
     expect(port.ui.setStatus).toHaveBeenLastCalledWith('pi-auto', 'auto 1/3');
 
+    loop.onAgentSettled();
     vi.advanceTimersByTime(250);
     expect(port.ui.setStatus).toHaveBeenLastCalledWith('pi-auto', 'auto 2/3');
 
+    loop.onAgentSettled();
     vi.advanceTimersByTime(250);
     expect(port.ui.setStatus).toHaveBeenLastCalledWith('pi-auto', 'auto 3/3');
 
+    loop.onAgentSettled();
     vi.advanceTimersByTime(250);
     expect(port.ui.setStatus).toHaveBeenLastCalledWith('pi-auto', undefined);
 
@@ -383,6 +396,188 @@ describe('AutoLoop status bar', () => {
     vi.advanceTimersByTime(10_000);
 
     expect(port.ui.setStatus).toHaveBeenCalledTimes(1);
+
+    vi.useRealTimers();
+  });
+});
+
+describe('AutoLoop compaction and settle gating', () => {
+  it('does not send the next message until the previous turn settles', () => {
+    vi.useFakeTimers();
+    const send = vi.fn();
+    const loop = new AutoLoop(send);
+    loop.attach(createPort(true));
+
+    loop.start('go', 2);
+    vi.advanceTimersByTime(0);
+    expect(send).toHaveBeenCalledTimes(1);
+
+    // isIdle() is true and nothing is compacting, but the turn has not settled
+    // yet (the harness may still be compacting or starting the run).
+    vi.advanceTimersByTime(1000);
+    expect(send).toHaveBeenCalledTimes(1);
+
+    loop.onAgentSettled();
+    vi.advanceTimersByTime(250);
+    expect(send).toHaveBeenCalledTimes(2);
+
+    vi.useRealTimers();
+  });
+
+  it('waits for the harness to finish compacting before sending', () => {
+    vi.useFakeTimers();
+    const send = vi.fn();
+    const loop = new AutoLoop(send);
+    loop.attach(createPort(true));
+
+    loop.start('go', 2);
+    vi.advanceTimersByTime(0);
+    expect(send).toHaveBeenCalledTimes(1);
+
+    // Auto-compaction fires before the next send is allowed.
+    loop.onCompactionStart();
+    vi.advanceTimersByTime(250);
+    expect(send).toHaveBeenCalledTimes(1);
+
+    loop.onCompactionEnd();
+    loop.onAgentSettled();
+    vi.advanceTimersByTime(250);
+    expect(send).toHaveBeenCalledTimes(2);
+
+    vi.useRealTimers();
+  });
+
+  it('waits for a manual compaction started between turns', () => {
+    vi.useFakeTimers();
+    const send = vi.fn();
+    const loop = new AutoLoop(send);
+    loop.attach(createPort(true));
+
+    loop.start('go', 3);
+    vi.advanceTimersByTime(0);
+    loop.onAgentSettled();
+    vi.advanceTimersByTime(250);
+    expect(send).toHaveBeenCalledTimes(2);
+
+    // User runs /compact while the loop is idle between turns.
+    loop.onAgentSettled();
+    loop.onCompactionStart();
+    vi.advanceTimersByTime(250);
+    expect(send).toHaveBeenCalledTimes(2);
+
+    loop.onCompactionEnd();
+    vi.advanceTimersByTime(250);
+    expect(send).toHaveBeenCalledTimes(3);
+
+    vi.useRealTimers();
+  });
+
+  it('recovers when compaction never reports completion', () => {
+    vi.useFakeTimers();
+    const send = vi.fn();
+    const loop = new AutoLoop(send);
+    const port = createPort(true);
+    loop.attach(port);
+
+    loop.start('go', 3);
+    vi.advanceTimersByTime(0);
+    loop.onAgentSettled();
+    vi.advanceTimersByTime(250);
+    expect(send).toHaveBeenCalledTimes(2);
+
+    // e.g. a manual /compact that was aborted: no session_compact follows.
+    loop.onAgentSettled();
+    loop.onCompactionStart();
+    vi.advanceTimersByTime(250);
+    expect(send).toHaveBeenCalledTimes(2);
+
+    vi.advanceTimersByTime(10 * 60 * 1000 + 250);
+    expect(send).toHaveBeenCalledTimes(3);
+    expect(port.ui.notify).toHaveBeenCalledWith(
+      'Auto mode: compaction did not report completion; resuming.',
+      'warning',
+    );
+
+    vi.useRealTimers();
+  });
+
+  it('recovers when a sent message never produces a turn', () => {
+    vi.useFakeTimers();
+    const send = vi.fn();
+    const loop = new AutoLoop(send);
+    const port = createPort(true);
+    loop.attach(port);
+
+    loop.start('go', 2);
+    vi.advanceTimersByTime(0);
+    expect(send).toHaveBeenCalledTimes(1);
+
+    // No agent_settled arrives (e.g. auth failure); resume after the bound.
+    vi.advanceTimersByTime(10 * 60 * 1000 + 250);
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(port.ui.notify).toHaveBeenCalledWith(
+      'Auto mode: last message produced no response; continuing.',
+      'warning',
+    );
+
+    vi.advanceTimersByTime(250);
+    expect(port.ui.notify).toHaveBeenCalledWith('Auto mode complete.', 'info');
+
+    vi.useRealTimers();
+  });
+
+  it('notifies when compaction starts and ends while a run is active', () => {
+    vi.useFakeTimers();
+    const loop = new AutoLoop(vi.fn());
+    const port = createPort(true);
+    loop.attach(port);
+
+    loop.start('go', 2);
+    loop.onCompactionStart();
+    expect(port.ui.notify).toHaveBeenCalledWith(
+      'Auto mode: waiting for compaction to finish...',
+      'info',
+    );
+
+    loop.onCompactionEnd();
+    expect(port.ui.notify).toHaveBeenCalledWith(
+      'Auto mode: compaction finished, continuing.',
+      'info',
+    );
+
+    vi.useRealTimers();
+  });
+
+  it('does not notify about compaction when no run is active', () => {
+    const loop = new AutoLoop(vi.fn());
+    const port = createPort(true);
+    loop.attach(port);
+
+    loop.onCompactionStart();
+    expect(port.ui.notify).not.toHaveBeenCalled();
+
+    loop.onCompactionEnd();
+    expect(port.ui.notify).not.toHaveBeenCalled();
+  });
+
+  it('detach resets pending state; a fresh run sends immediately', () => {
+    vi.useFakeTimers();
+    const send = vi.fn();
+    const loop = new AutoLoop(send);
+    loop.attach(createPort(true));
+
+    loop.start('go', 2);
+    vi.advanceTimersByTime(0);
+    expect(send).toHaveBeenCalledTimes(1);
+
+    loop.onCompactionStart(); // in-flight compaction at teardown
+    loop.detach();
+
+    loop.attach(createPort(true));
+    loop.start('again', 1);
+    vi.advanceTimersByTime(0);
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(send).toHaveBeenLastCalledWith('again');
 
     vi.useRealTimers();
   });

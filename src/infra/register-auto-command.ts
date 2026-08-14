@@ -84,6 +84,29 @@ export default function registerAutoCommand(pi: ExtensionAPI) {
     loop.stop();
   });
 
+  // The harness does not expose compaction state through ctx.isIdle(): it stays
+  // true during pre-prompt auto-compaction and manual /compact. Track it via
+  // events so the loop waits for the harness to finish before sending the next
+  // message. Returning nothing keeps compaction uncancelled.
+  pi.on('session_before_compact', (_event, ctx) => {
+    loop.attach(ctx);
+    loop.onCompactionStart();
+  });
+
+  pi.on('session_compact', (_event, ctx) => {
+    loop.attach(ctx);
+    loop.onCompactionEnd();
+  });
+
+  // `agent_settled` (pi >= 0.84.1, missing from the 0.73.1 SDK types) fires
+  // after the whole turn — run, retries, and post-run auto-compaction — which
+  // is exactly when it is safe to send the next auto message.
+  (
+    pi as unknown as {
+      on(event: 'agent_settled', handler: () => void): void;
+    }
+  ).on('agent_settled', () => loop.onAgentSettled());
+
   // The captured port goes stale when another extension (or the user) swaps the
   // session via newSession/fork/switchSession/reload. Auto is bound to the
   // session it started in, so detaching on replacement is the correct behavior.
