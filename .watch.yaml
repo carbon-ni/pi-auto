@@ -1,0 +1,40 @@
+## Funzzy events file
+# more details see: https://github.com/cristianoliveira/funzzy
+#
+# Mirrors CI (see .github/workflows/ci.yml and Makefile):
+#   make all = lint (tsc --noEmit + eslint) + format (prettier --check) + test (vitest run)
+# CI runs: node 22 -> npm ci -> make all (push to main + PRs, and pre-commit hook)
+
+on:
+  socket: .pi/funzzy.sock
+
+tasks:
+  - name: ci
+    run: make all
+    change:
+      - 'src/**/*.ts'
+      - 'tsconfig.json'
+      - 'package.json'
+      - 'Makefile'
+      - 'eslint.config.js'
+      - '.prettierrc.json'
+      - '.prettierignore'
+    run_on_init: true
+
+  - name: lint
+    run: npm run lint
+    change: 'src/**/*.ts'
+
+  - name: format
+    run: npm run format:check
+    change:
+      - 'src/**/*.ts'
+      - 'eslint.config.js'
+      - '.prettierrc.json'
+      - '.prettierignore'
+
+  - name: test
+    run: npm test
+    change:
+      - 'src/**/*.ts'
+      - 'tsconfig.json'
