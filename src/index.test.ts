@@ -1,146 +1,179 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from 'vitest';
 import {
   formatAutoStatus,
   getLastUserMessageText,
   parseAutoArgs,
   parseAutoEditArgs,
   textFromContent,
-} from "./lib/auto-helpers.js";
-import registerAutoCommand from "./infra/register-auto-command.js";
+} from './lib/auto-helpers.js';
+import registerAutoCommand from './infra/register-auto-command.js';
+import type { ExtensionAPI } from '@mariozechner/pi-coding-agent';
 
 // --- lib/auto-helpers ---
 
-describe("parseAutoArgs", () => {
-  it("parses repeat count without message", () => {
-    expect(parseAutoArgs("3")).toEqual({ count: 3, message: undefined });
+describe('parseAutoArgs', () => {
+  it('parses repeat count without message', () => {
+    expect(parseAutoArgs('3')).toEqual({ count: 3, message: undefined });
   });
 
-  it("parses repeat count with custom message", () => {
-    expect(parseAutoArgs("3 keep going")).toEqual({
+  it('parses repeat count with custom message', () => {
+    expect(parseAutoArgs('3 keep going')).toEqual({
       count: 3,
-      message: "keep going",
+      message: 'keep going',
     });
   });
 
-  it("rejects missing count", () => {
-    expect(parseAutoArgs("")).toBeUndefined();
+  it('rejects missing count', () => {
+    expect(parseAutoArgs('')).toBeUndefined();
   });
 
-  it("rejects invalid count", () => {
-    expect(parseAutoArgs("abc keep going")).toBeUndefined();
+  it('rejects invalid count', () => {
+    expect(parseAutoArgs('abc keep going')).toBeUndefined();
   });
 
-  it("rejects count below one", () => {
-    expect(parseAutoArgs("0 keep going")).toBeUndefined();
+  it('rejects count below one', () => {
+    expect(parseAutoArgs('0 keep going')).toBeUndefined();
   });
 
-  it("rejects count exceeding upper bound", () => {
-    expect(parseAutoArgs("101 go")).toBeUndefined();
-    expect(parseAutoArgs("999999999 go")).toBeUndefined();
+  it('rejects count exceeding upper bound', () => {
+    expect(parseAutoArgs('101 go')).toBeUndefined();
+    expect(parseAutoArgs('999999999 go')).toBeUndefined();
   });
 
-  it("accepts count at upper bound (100)", () => {
-    expect(parseAutoArgs("100 go")).toEqual({ count: 100, message: "go" });
+  it('accepts count at upper bound (100)', () => {
+    expect(parseAutoArgs('100 go')).toEqual({ count: 100, message: 'go' });
   });
 });
 
-describe("parseAutoEditArgs", () => {
+describe('parseAutoEditArgs', () => {
   it.each([
-    ['edit 3 "keep going"', { count: 3, message: "keep going" }],
-    ['e 3 "keep going"', { count: 3, message: "keep going" }],
-    ["edit 3 keep going", { count: 3, message: "keep going" }],
-  ])("parses %j", (args, expected) => {
+    ['edit 3 "keep going"', { count: 3, message: 'keep going' }],
+    ['e 3 "keep going"', { count: 3, message: 'keep going' }],
+    ['edit 3 keep going', { count: 3, message: 'keep going' }],
+  ])('parses %j', (args, expected) => {
     expect(parseAutoEditArgs(args)).toEqual(expected);
   });
 
-  it.each(["edit", "e", "edit 0 message", "edit 3", "other message"])(
-    "rejects invalid arguments: %j",
+  it.each(['edit', 'e', 'edit 0 message', 'edit 3', 'other message'])(
+    'rejects invalid arguments: %j',
     (args) => {
       expect(parseAutoEditArgs(args)).toBeUndefined();
     },
   );
 });
 
-describe("textFromContent", () => {
-  it("extracts text from string content", () => {
-    expect(textFromContent("hello")).toBe("hello");
+describe('textFromContent', () => {
+  it('extracts text from string content', () => {
+    expect(textFromContent('hello')).toBe('hello');
   });
 
-  it("extracts text from structured content parts", () => {
+  it('extracts text from structured content parts', () => {
     expect(
-      textFromContent([{ type: "text", text: "hello" }, { type: "text", text: "world" }]),
-    ).toBe("hello\nworld");
+      textFromContent([
+        { type: 'text', text: 'hello' },
+        { type: 'text', text: 'world' },
+      ]),
+    ).toBe('hello\nworld');
   });
 
-  it("returns undefined for empty string", () => {
-    expect(textFromContent("")).toBeUndefined();
+  it('returns undefined for empty string', () => {
+    expect(textFromContent('')).toBeUndefined();
   });
 
-  it("returns undefined for whitespace-only string", () => {
-    expect(textFromContent("   ")).toBeUndefined();
+  it('returns undefined for whitespace-only string', () => {
+    expect(textFromContent('   ')).toBeUndefined();
   });
 
-  it("returns undefined for empty array", () => {
+  it('returns undefined for empty array', () => {
     expect(textFromContent([])).toBeUndefined();
   });
 
-  it("returns undefined for non-text parts", () => {
-    expect(textFromContent([{ type: "image", url: "x" }])).toBeUndefined();
+  it('returns undefined for non-text parts', () => {
+    expect(textFromContent([{ type: 'image', url: 'x' }])).toBeUndefined();
   });
 
-  it("returns undefined for null", () => {
+  it('returns undefined for null', () => {
     expect(textFromContent(null)).toBeUndefined();
   });
 });
 
-describe("getLastUserMessageText", () => {
-  it("returns the latest user text message", () => {
+describe('getLastUserMessageText', () => {
+  it('returns the latest user text message', () => {
     expect(
       getLastUserMessageText([
-        { type: "message", message: { role: "user", content: [{ type: "text", text: "first" }] } },
-        { type: "message", message: { role: "assistant", content: [{ type: "text", text: "ok" }] } },
-        { type: "message", message: { role: "user", content: [{ type: "text", text: "last" }] } },
+        {
+          type: 'message',
+          message: { role: 'user', content: [{ type: 'text', text: 'first' }] },
+        },
+        {
+          type: 'message',
+          message: {
+            role: 'assistant',
+            content: [{ type: 'text', text: 'ok' }],
+          },
+        },
+        {
+          type: 'message',
+          message: { role: 'user', content: [{ type: 'text', text: 'last' }] },
+        },
       ]),
-    ).toBe("last");
+    ).toBe('last');
   });
 
-  it("ignores auto command messages if present", () => {
+  it('ignores auto command messages if present', () => {
     expect(
       getLastUserMessageText([
-        { type: "message", message: { role: "user", content: [{ type: "text", text: "previous task" }] } },
-        { type: "message", message: { role: "user", content: [{ type: "text", text: "/auto 3" }] } },
+        {
+          type: 'message',
+          message: {
+            role: 'user',
+            content: [{ type: 'text', text: 'previous task' }],
+          },
+        },
+        {
+          type: 'message',
+          message: {
+            role: 'user',
+            content: [{ type: 'text', text: '/auto 3' }],
+          },
+        },
       ]),
-    ).toBe("previous task");
+    ).toBe('previous task');
   });
 
-  it("returns undefined when no previous user text exists", () => {
+  it('returns undefined when no previous user text exists', () => {
     expect(getLastUserMessageText([])).toBeUndefined();
   });
 
-  it("skips entries with invalid structure", () => {
+  it('skips entries with invalid structure', () => {
     expect(
       getLastUserMessageText([
-        { type: "other" },
-        { type: "message", message: { role: "user", content: [{ type: "text", text: "found" }] } },
+        { type: 'other' },
+        {
+          type: 'message',
+          message: { role: 'user', content: [{ type: 'text', text: 'found' }] },
+        },
       ]),
-    ).toBe("found");
+    ).toBe('found');
   });
 });
 
-describe("formatAutoStatus", () => {
-  it("formats sent/total as auto x/y", () => {
-    expect(formatAutoStatus(0, 5)).toBe("auto 0/5");
-    expect(formatAutoStatus(3, 5)).toBe("auto 3/5");
-    expect(formatAutoStatus(5, 5)).toBe("auto 5/5");
+describe('formatAutoStatus', () => {
+  it('formats sent/total as auto x/y', () => {
+    expect(formatAutoStatus(0, 5)).toBe('auto 0/5');
+    expect(formatAutoStatus(3, 5)).toBe('auto 3/5');
+    expect(formatAutoStatus(5, 5)).toBe('auto 5/5');
   });
 });
 
 // --- infra/register-auto-command ---
 
 function createMockPi() {
-  const commands: Record<string, { description: string; handler: Function }> = {};
-  const tools: Record<string, { name: string; execute: Function }> = {};
-  const handlers: Record<string, Function[]> = {};
+  type Handler = (...args: unknown[]) => unknown;
+  const commands: Record<string, { description: string; handler: Handler }> =
+    {};
+  const tools: Record<string, { name: string; execute: Handler }> = {};
+  const handlers: Record<string, Handler[]> = {};
   return {
     registerCommand: vi.fn((name, cmd) => {
       commands[name] = cmd;
@@ -148,7 +181,7 @@ function createMockPi() {
     registerTool: vi.fn((def) => {
       tools[def.name] = def;
     }),
-    on: vi.fn((event: string, handler: Function) => {
+    on: vi.fn((event: string, handler: Handler) => {
       (handlers[event] ??= []).push(handler);
     }),
     sendUserMessage: vi.fn(),
@@ -158,8 +191,17 @@ function createMockPi() {
   };
 }
 
-function emit(pi: ReturnType<typeof createMockPi>, event: string, payload: unknown) {
+function emit(
+  pi: ReturnType<typeof createMockPi>,
+  event: string,
+  payload: unknown,
+) {
   for (const handler of pi._handlers[event] ?? []) handler(payload);
+}
+
+// The mock is a structural partial; cast once here instead of at every call site.
+function register(pi: ReturnType<typeof createMockPi>) {
+  registerAutoCommand(pi as unknown as ExtensionAPI);
 }
 
 function createMockCtx(isIdle = true, branch: unknown[] = []) {
@@ -170,62 +212,74 @@ function createMockCtx(isIdle = true, branch: unknown[] = []) {
   };
 }
 
-describe("registerAutoCommand", () => {
-  it("registers the auto and defer commands, without the deprecated auto-edit command", () => {
+describe('registerAutoCommand', () => {
+  it('registers the auto and defer commands, without the deprecated auto-edit command', () => {
     const pi = createMockPi();
-    registerAutoCommand(pi as any);
-    expect(pi.registerCommand).toHaveBeenCalledWith("auto", expect.any(Object));
-    expect(pi.registerCommand).not.toHaveBeenCalledWith("auto-edit", expect.any(Object));
-    expect(pi.registerCommand).toHaveBeenCalledWith("defer", expect.any(Object));
+    register(pi);
+    expect(pi.registerCommand).toHaveBeenCalledWith('auto', expect.any(Object));
+    expect(pi.registerCommand).not.toHaveBeenCalledWith(
+      'auto-edit',
+      expect.any(Object),
+    );
+    expect(pi.registerCommand).toHaveBeenCalledWith(
+      'defer',
+      expect.any(Object),
+    );
   });
 
-  it("warns on invalid args", async () => {
+  it('warns on invalid args', async () => {
     const pi = createMockPi();
-    registerAutoCommand(pi as any);
+    register(pi);
     const ctx = createMockCtx();
-    await pi._commands.auto.handler("", ctx);
+    await pi._commands.auto.handler('', ctx);
     expect(ctx.ui.notify).toHaveBeenCalledWith(
       'Usage: /auto <count> [message] | /auto stop | /auto edit|e <number> "<message>"',
-      "warning",
+      'warning',
     );
   });
 
-  it("warns when no message found", async () => {
+  it('warns when no message found', async () => {
     const pi = createMockPi();
-    registerAutoCommand(pi as any);
+    register(pi);
     const ctx = createMockCtx(true, []);
-    await pi._commands.auto.handler("3", ctx);
+    await pi._commands.auto.handler('3', ctx);
     expect(ctx.ui.notify).toHaveBeenCalledWith(
-      "No previous user message found. Usage: /auto <count> [message]",
-      "warning",
+      'No previous user message found. Usage: /auto <count> [message]',
+      'warning',
     );
   });
 
-  it("sends message immediately when idle", async () => {
+  it('sends message immediately when idle', async () => {
     vi.useFakeTimers();
     const pi = createMockPi();
-    registerAutoCommand(pi as any);
+    register(pi);
     const ctx = createMockCtx(true, [
-      { type: "message", message: { role: "user", content: [{ type: "text", text: "go" }] } },
+      {
+        type: 'message',
+        message: { role: 'user', content: [{ type: 'text', text: 'go' }] },
+      },
     ]);
 
-    await pi._commands.auto.handler("1", ctx);
+    await pi._commands.auto.handler('1', ctx);
 
     vi.advanceTimersByTime(0);
-    expect(pi.sendUserMessage).toHaveBeenCalledWith("go");
+    expect(pi.sendUserMessage).toHaveBeenCalledWith('go');
 
     vi.useRealTimers();
   });
 
-  it("sends message N times when idle", async () => {
+  it('sends message N times when idle', async () => {
     vi.useFakeTimers();
     const pi = createMockPi();
-    registerAutoCommand(pi as any);
+    register(pi);
     const ctx = createMockCtx(true, [
-      { type: "message", message: { role: "user", content: [{ type: "text", text: "go" }] } },
+      {
+        type: 'message',
+        message: { role: 'user', content: [{ type: 'text', text: 'go' }] },
+      },
     ]);
 
-    await pi._commands.auto.handler("3", ctx);
+    await pi._commands.auto.handler('3', ctx);
 
     vi.advanceTimersByTime(0);
     expect(pi.sendUserMessage).toHaveBeenCalledTimes(1);
@@ -239,195 +293,198 @@ describe("registerAutoCommand", () => {
     vi.advanceTimersByTime(250);
     expect(pi.sendUserMessage).toHaveBeenCalledTimes(3);
 
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Auto mode complete.", "info");
+    expect(ctx.ui.notify).toHaveBeenCalledWith('Auto mode complete.', 'info');
 
     vi.useRealTimers();
   });
 
-  it("shows auto progress in the status bar", async () => {
+  it('shows auto progress in the status bar', async () => {
     vi.useFakeTimers();
     const pi = createMockPi();
-    registerAutoCommand(pi as any);
+    register(pi);
     const ctx = createMockCtx(true, [
-      { type: "message", message: { role: "user", content: [{ type: "text", text: "go" }] } },
+      {
+        type: 'message',
+        message: { role: 'user', content: [{ type: 'text', text: 'go' }] },
+      },
     ]);
 
-    await pi._commands.auto.handler("3", ctx);
-    expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("pi-auto", "auto 0/3");
+    await pi._commands.auto.handler('3', ctx);
+    expect(ctx.ui.setStatus).toHaveBeenLastCalledWith('pi-auto', 'auto 0/3');
 
     vi.advanceTimersByTime(0);
-    expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("pi-auto", "auto 1/3");
+    expect(ctx.ui.setStatus).toHaveBeenLastCalledWith('pi-auto', 'auto 1/3');
 
     vi.advanceTimersByTime(250);
-    expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("pi-auto", "auto 2/3");
+    expect(ctx.ui.setStatus).toHaveBeenLastCalledWith('pi-auto', 'auto 2/3');
 
     vi.advanceTimersByTime(250);
-    expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("pi-auto", "auto 3/3");
+    expect(ctx.ui.setStatus).toHaveBeenLastCalledWith('pi-auto', 'auto 3/3');
 
     vi.advanceTimersByTime(250);
-    expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("pi-auto", undefined);
+    expect(ctx.ui.setStatus).toHaveBeenLastCalledWith('pi-auto', undefined);
 
     vi.useRealTimers();
   });
 
-  it("edits the running auto message for future sends", async () => {
+  it('edits the running auto message for future sends', async () => {
     vi.useFakeTimers();
     const pi = createMockPi();
-    registerAutoCommand(pi as any);
+    register(pi);
     const ctx = createMockCtx(true);
 
-    await pi._commands.auto.handler("3 first", ctx);
+    await pi._commands.auto.handler('3 first', ctx);
     vi.advanceTimersByTime(0);
 
     await pi._commands.auto.handler('edit 2 "second"', ctx);
     vi.advanceTimersByTime(500);
 
-    expect(pi.sendUserMessage).toHaveBeenNthCalledWith(1, "first");
-    expect(pi.sendUserMessage).toHaveBeenNthCalledWith(2, "second");
-    expect(pi.sendUserMessage).toHaveBeenNthCalledWith(3, "second");
+    expect(pi.sendUserMessage).toHaveBeenNthCalledWith(1, 'first');
+    expect(pi.sendUserMessage).toHaveBeenNthCalledWith(2, 'second');
+    expect(pi.sendUserMessage).toHaveBeenNthCalledWith(3, 'second');
 
     vi.useRealTimers();
   });
 
-  it("warns when editing auto message while auto mode is not running", async () => {
+  it('warns when editing auto message while auto mode is not running', async () => {
     const pi = createMockPi();
-    registerAutoCommand(pi as any);
+    register(pi);
     const ctx = createMockCtx();
 
     await pi._commands.auto.handler('e 2 "second"', ctx);
 
     expect(ctx.ui.notify).toHaveBeenCalledWith(
-      "Auto mode is not running. Start it with /auto <count> [message].",
-      "warning",
+      'Auto mode is not running. Start it with /auto <count> [message].',
+      'warning',
     );
   });
 
-  it("warns when auto edit message is empty", async () => {
+  it('warns when auto edit message is empty', async () => {
     const pi = createMockPi();
-    registerAutoCommand(pi as any);
+    register(pi);
     const ctx = createMockCtx();
 
-    await pi._commands.auto.handler("edit   ", ctx);
+    await pi._commands.auto.handler('edit   ', ctx);
 
     expect(ctx.ui.notify).toHaveBeenCalledWith(
       'Usage: /auto edit|e <number> "<message>"',
-      "warning",
+      'warning',
     );
   });
 
-  it("removes the last deferred auto message", async () => {
+  it('removes the last deferred auto message', async () => {
     vi.useFakeTimers();
     const pi = createMockPi();
-    registerAutoCommand(pi as any);
+    register(pi);
     const ctx = createMockCtx(true);
 
-    await pi._commands.auto.handler("2 continue", ctx);
+    await pi._commands.auto.handler('2 continue', ctx);
     vi.advanceTimersByTime(0);
-    await pi._commands.defer.handler("final task", ctx);
-    await pi._commands.defer.handler("remove", ctx);
+    await pi._commands.defer.handler('final task', ctx);
+    await pi._commands.defer.handler('remove', ctx);
     vi.advanceTimersByTime(250);
 
-    expect(pi.sendUserMessage).toHaveBeenNthCalledWith(1, "continue");
-    expect(pi.sendUserMessage).toHaveBeenNthCalledWith(2, "continue");
+    expect(pi.sendUserMessage).toHaveBeenNthCalledWith(1, 'continue');
+    expect(pi.sendUserMessage).toHaveBeenNthCalledWith(2, 'continue');
     expect(ctx.ui.notify).toHaveBeenCalledWith(
       'Removed deferred message "final task".',
-      "info",
+      'info',
     );
 
     vi.useRealTimers();
   });
 
-  it("warns when there is no deferred auto message to remove", async () => {
+  it('warns when there is no deferred auto message to remove', async () => {
     const pi = createMockPi();
-    registerAutoCommand(pi as any);
+    register(pi);
     const ctx = createMockCtx();
 
-    await pi._commands.defer.handler("remove", ctx);
+    await pi._commands.defer.handler('remove', ctx);
 
     expect(ctx.ui.notify).toHaveBeenCalledWith(
-      "No deferred message to remove.",
-      "warning",
+      'No deferred message to remove.',
+      'warning',
     );
   });
 
-  it("sends a deferred message only on the final auto round", async () => {
+  it('sends a deferred message only on the final auto round', async () => {
     vi.useFakeTimers();
     const pi = createMockPi();
-    registerAutoCommand(pi as any);
+    register(pi);
     const ctx = createMockCtx(true);
 
-    await pi._commands.auto.handler("3 continue", ctx);
+    await pi._commands.auto.handler('3 continue', ctx);
     vi.advanceTimersByTime(0);
-    await pi._commands.defer.handler("final task", ctx);
+    await pi._commands.defer.handler('final task', ctx);
     vi.advanceTimersByTime(500);
 
-    expect(pi.sendUserMessage).toHaveBeenNthCalledWith(1, "continue");
-    expect(pi.sendUserMessage).toHaveBeenNthCalledWith(2, "continue");
-    expect(pi.sendUserMessage).toHaveBeenNthCalledWith(3, "final task");
+    expect(pi.sendUserMessage).toHaveBeenNthCalledWith(1, 'continue');
+    expect(pi.sendUserMessage).toHaveBeenNthCalledWith(2, 'continue');
+    expect(pi.sendUserMessage).toHaveBeenNthCalledWith(3, 'final task');
     expect(ctx.ui.notify).toHaveBeenCalledWith(
       'Deferred "final task" until the final auto round.',
-      "info",
+      'info',
     );
 
     vi.useRealTimers();
   });
 
-  it("queues an explicit deferred message as a follow-up without auto mode", async () => {
+  it('queues an explicit deferred message as a follow-up without auto mode', async () => {
     const pi = createMockPi();
-    registerAutoCommand(pi as any);
+    register(pi);
     const ctx = createMockCtx(false);
 
-    await pi._commands.defer.handler("final task", ctx);
+    await pi._commands.defer.handler('final task', ctx);
 
-    expect(pi.sendUserMessage).toHaveBeenCalledWith("final task", {
-      deliverAs: "followUp",
+    expect(pi.sendUserMessage).toHaveBeenCalledWith('final task', {
+      deliverAs: 'followUp',
     });
     expect(ctx.ui.notify).toHaveBeenCalledWith(
       'Deferred "final task" as a follow-up.',
-      "info",
+      'info',
     );
   });
 
-  it("warns when an explicit defer has no active work", async () => {
+  it('warns when an explicit defer has no active work', async () => {
     const pi = createMockPi();
-    registerAutoCommand(pi as any);
+    register(pi);
     const ctx = createMockCtx(true);
 
-    await pi._commands.defer.handler("final task", ctx);
+    await pi._commands.defer.handler('final task', ctx);
 
     expect(ctx.ui.notify).toHaveBeenCalledWith(
-      "Nothing is running. Start work before deferring a message.",
-      "warning",
+      'Nothing is running. Start work before deferring a message.',
+      'warning',
     );
   });
 
-  it("defers the latest queued steering message when no argument is given", async () => {
+  it('defers the latest queued steering message when no argument is given', async () => {
     vi.useFakeTimers();
     const pi = createMockPi();
-    registerAutoCommand(pi as any);
+    register(pi);
     let idle = true;
     const ctx = {
       ...createMockCtx(),
       isIdle: () => idle,
     };
 
-    await pi._commands.auto.handler("2 continue", ctx);
+    await pi._commands.auto.handler('2 continue', ctx);
     vi.advanceTimersByTime(0);
 
     idle = false;
     await pi._handlers.input[0](
-      { text: "final task", source: "interactive" },
+      { text: 'final task', source: 'interactive' },
       ctx,
     );
-    await pi._commands.defer.handler("", ctx);
+    await pi._commands.defer.handler('', ctx);
 
     const steeringMessage = {
-      role: "user",
-      content: [{ type: "text", text: "final task" }],
+      role: 'user',
+      content: [{ type: 'text', text: 'final task' }],
       timestamp: 123,
     };
     const replacement = await pi._handlers.message_end[0](
-      { type: "message_end", message: steeringMessage },
+      { type: 'message_end', message: steeringMessage },
       ctx,
     );
     idle = true;
@@ -436,103 +493,103 @@ describe("registerAutoCommand", () => {
     expect(replacement).toEqual({
       message: {
         ...steeringMessage,
-        content: [{ type: "text", text: "continue" }],
+        content: [{ type: 'text', text: 'continue' }],
       },
     });
-    expect(pi.sendUserMessage).toHaveBeenNthCalledWith(1, "continue");
-    expect(pi.sendUserMessage).toHaveBeenNthCalledWith(2, "final task");
+    expect(pi.sendUserMessage).toHaveBeenNthCalledWith(1, 'continue');
+    expect(pi.sendUserMessage).toHaveBeenNthCalledWith(2, 'final task');
     expect(ctx.ui.notify).toHaveBeenCalledWith(
       'Deferred queued steering message "final task" until the final auto round.',
-      "info",
+      'info',
     );
 
     vi.useRealTimers();
   });
 
-  it("defers queued steering as a follow-up without auto mode", async () => {
+  it('defers queued steering as a follow-up without auto mode', async () => {
     const pi = createMockPi();
-    registerAutoCommand(pi as any);
+    register(pi);
     const ctx = createMockCtx(false);
 
     await pi._handlers.input[0](
-      { text: "do this later", source: "interactive" },
+      { text: 'do this later', source: 'interactive' },
       ctx,
     );
-    await pi._commands.defer.handler("", ctx);
+    await pi._commands.defer.handler('', ctx);
 
     const steeringMessage = {
-      role: "user",
-      content: [{ type: "text", text: "do this later" }],
+      role: 'user',
+      content: [{ type: 'text', text: 'do this later' }],
       timestamp: 123,
     };
-    const replacement = await pi._handlers.message_end[0](
-      { type: "message_end", message: steeringMessage },
+    const replacement = (await pi._handlers.message_end[0](
+      { type: 'message_end', message: steeringMessage },
       ctx,
-    );
+    )) as { message: { content: unknown[] } } | undefined;
 
     expect(replacement?.message.content).toEqual([
-      { type: "text", text: "continue" },
+      { type: 'text', text: 'continue' },
     ]);
-    expect(pi.sendUserMessage).toHaveBeenCalledWith("do this later", {
-      deliverAs: "followUp",
+    expect(pi.sendUserMessage).toHaveBeenCalledWith('do this later', {
+      deliverAs: 'followUp',
     });
     expect(ctx.ui.notify).toHaveBeenCalledWith(
       'Deferred queued steering message "do this later" as a follow-up.',
-      "info",
+      'info',
     );
   });
 
-  it("does not record extension-generated auto messages as steering", async () => {
+  it('does not record extension-generated auto messages as steering', async () => {
     vi.useFakeTimers();
     const pi = createMockPi();
-    registerAutoCommand(pi as any);
+    register(pi);
     const ctx = createMockCtx(true);
 
-    await pi._commands.auto.handler("2 continue", ctx);
+    await pi._commands.auto.handler('2 continue', ctx);
     vi.advanceTimersByTime(0);
-    await pi._handlers.input[0](
-      { text: "continue", source: "extension" },
-      ctx,
-    );
-    await pi._commands.defer.handler("", ctx);
+    await pi._handlers.input[0]({ text: 'continue', source: 'extension' }, ctx);
+    await pi._commands.defer.handler('', ctx);
 
     expect(ctx.ui.notify).toHaveBeenCalledWith(
-      "No queued steering message found. Usage: /defer <message>",
-      "warning",
+      'No queued steering message found. Usage: /defer <message>',
+      'warning',
     );
 
     vi.useRealTimers();
   });
 
-  it("warns when defer has no argument or observed steering message", async () => {
+  it('warns when defer has no argument or observed steering message', async () => {
     const pi = createMockPi();
-    registerAutoCommand(pi as any);
+    register(pi);
     const ctx = createMockCtx();
 
-    await pi._commands.defer.handler("   ", ctx);
+    await pi._commands.defer.handler('   ', ctx);
 
     expect(ctx.ui.notify).toHaveBeenCalledWith(
-      "No queued steering message found. Usage: /defer <message>",
-      "warning",
+      'No queued steering message found. Usage: /defer <message>',
+      'warning',
     );
   });
 
-  it("waits when not idle then sends when idle", async () => {
+  it('waits when not idle then sends when idle', async () => {
     vi.useFakeTimers();
     const pi = createMockPi();
-    registerAutoCommand(pi as any);
+    register(pi);
     let idle = false;
     const ctx = {
       ui: { notify: vi.fn(), setStatus: vi.fn() },
       isIdle: () => idle,
       sessionManager: {
         getBranch: () => [
-          { type: "message", message: { role: "user", content: [{ type: "text", text: "go" }] } },
+          {
+            type: 'message',
+            message: { role: 'user', content: [{ type: 'text', text: 'go' }] },
+          },
         ],
       },
     };
 
-    await pi._commands.auto.handler("1", ctx);
+    await pi._commands.auto.handler('1', ctx);
     expect(pi.sendUserMessage).toHaveBeenCalledTimes(0);
 
     idle = true;
@@ -542,48 +599,44 @@ describe("registerAutoCommand", () => {
     vi.useRealTimers();
   });
 
-  it("stops auto when the current agent run is aborted", async () => {
+  it('stops auto when the current agent run is aborted', async () => {
     vi.useFakeTimers();
     const pi = createMockPi();
-    registerAutoCommand(pi as any);
+    register(pi);
     const ctx = createMockCtx(true);
 
-    await pi._commands.auto.handler("10 continue", ctx);
+    await pi._commands.auto.handler('10 continue', ctx);
     vi.advanceTimersByTime(0);
     expect(pi.sendUserMessage).toHaveBeenCalledTimes(1);
 
     await pi._handlers.agent_end[0](
       {
-        type: "agent_end",
-        messages: [
-          { role: "assistant", content: [], stopReason: "aborted" },
-        ],
+        type: 'agent_end',
+        messages: [{ role: 'assistant', content: [], stopReason: 'aborted' }],
       },
       ctx,
     );
 
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Auto mode stopped.", "info");
+    expect(ctx.ui.notify).toHaveBeenCalledWith('Auto mode stopped.', 'info');
     vi.advanceTimersByTime(1000);
     expect(pi.sendUserMessage).toHaveBeenCalledTimes(1);
 
     vi.useRealTimers();
   });
 
-  it("keeps auto running after a normally completed agent run", async () => {
+  it('keeps auto running after a normally completed agent run', async () => {
     vi.useFakeTimers();
     const pi = createMockPi();
-    registerAutoCommand(pi as any);
+    register(pi);
     const ctx = createMockCtx(true);
 
-    await pi._commands.auto.handler("2 continue", ctx);
+    await pi._commands.auto.handler('2 continue', ctx);
     vi.advanceTimersByTime(0);
 
     await pi._handlers.agent_end[0](
       {
-        type: "agent_end",
-        messages: [
-          { role: "assistant", content: [], stopReason: "stop" },
-        ],
+        type: 'agent_end',
+        messages: [{ role: 'assistant', content: [], stopReason: 'stop' }],
       },
       ctx,
     );
@@ -594,20 +647,23 @@ describe("registerAutoCommand", () => {
     vi.useRealTimers();
   });
 
-  it("stops auto on /auto stop", async () => {
+  it('stops auto on /auto stop', async () => {
     vi.useFakeTimers();
     const pi = createMockPi();
-    registerAutoCommand(pi as any);
+    register(pi);
     const ctx = createMockCtx(true, [
-      { type: "message", message: { role: "user", content: [{ type: "text", text: "go" }] } },
+      {
+        type: 'message',
+        message: { role: 'user', content: [{ type: 'text', text: 'go' }] },
+      },
     ]);
 
-    await pi._commands.auto.handler("10", ctx);
+    await pi._commands.auto.handler('10', ctx);
     vi.advanceTimersByTime(0);
     expect(pi.sendUserMessage).toHaveBeenCalledTimes(1);
 
-    await pi._commands.auto.handler("stop", ctx);
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Auto mode stopped.", "info");
+    await pi._commands.auto.handler('stop', ctx);
+    expect(ctx.ui.notify).toHaveBeenCalledWith('Auto mode stopped.', 'info');
 
     vi.advanceTimersByTime(1000);
     expect(pi.sendUserMessage).toHaveBeenCalledTimes(1);
@@ -615,38 +671,38 @@ describe("registerAutoCommand", () => {
     vi.useRealTimers();
   });
 
-  it("stops auto even if not running on /auto stop", async () => {
+  it('stops auto even if not running on /auto stop', async () => {
     const pi = createMockPi();
-    registerAutoCommand(pi as any);
+    register(pi);
     const ctx = createMockCtx();
 
-    await pi._commands.auto.handler("stop", ctx);
-    expect(ctx.ui.notify).toHaveBeenCalledWith("No auto mode is running.", "warning");
+    await pi._commands.auto.handler('stop', ctx);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      'No auto mode is running.',
+      'warning',
+    );
   });
 
-  it.each([
-    "new",
-    "fork",
-    "resume",
-    "reload",
-    "quit",
-  ] as const)(
-    "stops the auto loop on session_shutdown reason=%s (captured ctx goes stale)",
+  it.each(['new', 'fork', 'resume', 'reload', 'quit'] as const)(
+    'stops the auto loop on session_shutdown reason=%s (captured ctx goes stale)',
     async (reason) => {
       vi.useFakeTimers();
       const pi = createMockPi();
-      registerAutoCommand(pi as any);
+      register(pi);
       const ctx = createMockCtx(true, [
-        { type: "message", message: { role: "user", content: [{ type: "text", text: "go" }] } },
+        {
+          type: 'message',
+          message: { role: 'user', content: [{ type: 'text', text: 'go' }] },
+        },
       ]);
 
-      await pi._commands.auto.handler("5", ctx);
+      await pi._commands.auto.handler('5', ctx);
       vi.advanceTimersByTime(0);
       expect(pi.sendUserMessage).toHaveBeenCalledTimes(1);
 
       // Simulate the session being replaced (e.g. pi-context-pruner newSession/fork).
       // The captured command ctx is now stale; the tick loop must not run again.
-      emit(pi, "session_shutdown", { type: "session_shutdown", reason });
+      emit(pi, 'session_shutdown', { type: 'session_shutdown', reason });
 
       vi.advanceTimersByTime(10_000);
       expect(pi.sendUserMessage).toHaveBeenCalledTimes(1);
@@ -655,25 +711,28 @@ describe("registerAutoCommand", () => {
     },
   );
 
-  it("can start auto again after session_shutdown", async () => {
+  it('can start auto again after session_shutdown', async () => {
     vi.useFakeTimers();
     const pi = createMockPi();
-    registerAutoCommand(pi as any);
+    register(pi);
     const ctx = createMockCtx(true, [
-      { type: "message", message: { role: "user", content: [{ type: "text", text: "go" }] } },
+      {
+        type: 'message',
+        message: { role: 'user', content: [{ type: 'text', text: 'go' }] },
+      },
     ]);
 
-    await pi._commands.auto.handler("2", ctx);
+    await pi._commands.auto.handler('2', ctx);
     vi.advanceTimersByTime(0);
     expect(pi.sendUserMessage).toHaveBeenCalledTimes(1);
 
-    emit(pi, "session_shutdown", { type: "session_shutdown", reason: "new" });
+    emit(pi, 'session_shutdown', { type: 'session_shutdown', reason: 'new' });
 
     // Restart on the fresh session — new loop works.
-    await pi._commands.auto.handler("1", ctx);
+    await pi._commands.auto.handler('1', ctx);
     vi.advanceTimersByTime(250);
     expect(pi.sendUserMessage).toHaveBeenCalledTimes(2);
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Auto mode complete.", "info");
+    expect(ctx.ui.notify).toHaveBeenCalledWith('Auto mode complete.', 'info');
 
     vi.useRealTimers();
   });
@@ -681,32 +740,41 @@ describe("registerAutoCommand", () => {
 
 // --- auto_stop tool ---
 
-describe("auto_stop tool", () => {
-  it("registers the auto_stop tool", () => {
+describe('auto_stop tool', () => {
+  it('registers the auto_stop tool', () => {
     const pi = createMockPi();
-    registerAutoCommand(pi as any);
+    register(pi);
     expect(pi.registerTool).toHaveBeenCalledWith(
-      expect.objectContaining({ name: "auto_stop" }),
+      expect.objectContaining({ name: 'auto_stop' }),
     );
   });
 
-  it("stops a running auto loop", async () => {
+  it('stops a running auto loop', async () => {
     vi.useFakeTimers();
     const pi = createMockPi();
-    registerAutoCommand(pi as any);
+    register(pi);
     const ctx = createMockCtx(true, [
-      { type: "message", message: { role: "user", content: [{ type: "text", text: "go" }] } },
+      {
+        type: 'message',
+        message: { role: 'user', content: [{ type: 'text', text: 'go' }] },
+      },
     ]);
 
     // Start auto with 10 iterations
-    await pi._commands.auto.handler("10", ctx);
+    await pi._commands.auto.handler('10', ctx);
     vi.advanceTimersByTime(0);
     expect(pi.sendUserMessage).toHaveBeenCalledTimes(1);
 
     // Call auto_stop
-    const result = await pi._tools.auto_stop.execute("id", {}, undefined, undefined, ctx);
-    expect(result.content[0].text).toBe("Auto mode stopped.");
-    expect(ctx.ui.notify).toHaveBeenCalledWith("Auto mode stopped.", "info");
+    const result = (await pi._tools.auto_stop.execute(
+      'id',
+      {},
+      undefined,
+      undefined,
+      ctx,
+    )) as { content: Array<{ text: string }> };
+    expect(result.content[0].text).toBe('Auto mode stopped.');
+    expect(ctx.ui.notify).toHaveBeenCalledWith('Auto mode stopped.', 'info');
 
     // No more sends
     vi.advanceTimersByTime(1000);
@@ -715,12 +783,18 @@ describe("auto_stop tool", () => {
     vi.useRealTimers();
   });
 
-  it("returns message when no auto loop is running", async () => {
+  it('returns message when no auto loop is running', async () => {
     const pi = createMockPi();
-    registerAutoCommand(pi as any);
+    register(pi);
     const ctx = createMockCtx();
 
-    const result = await pi._tools.auto_stop.execute("id", {}, undefined, undefined, ctx);
-    expect(result.content[0].text).toBe("No auto mode is running.");
+    const result = (await pi._tools.auto_stop.execute(
+      'id',
+      {},
+      undefined,
+      undefined,
+      ctx,
+    )) as { content: Array<{ text: string }> };
+    expect(result.content[0].text).toBe('No auto mode is running.');
   });
 });

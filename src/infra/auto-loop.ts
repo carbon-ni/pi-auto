@@ -13,13 +13,13 @@
  *   touching it. No notification.
  */
 
-import { formatAutoStatus } from "../lib/auto-helpers.js";
+import { formatAutoStatus } from '../lib/auto-helpers.js';
 
 const POLL_INTERVAL_MS = 250;
 
-const DEFAULT_STATUS_KEY = "pi-auto";
+const DEFAULT_STATUS_KEY = 'pi-auto';
 
-export type NotifyLevel = "info" | "warning" | "error";
+export type NotifyLevel = 'info' | 'warning' | 'error';
 
 export type LoopPort = {
   isIdle(): boolean;
@@ -70,7 +70,7 @@ export class AutoLoop {
     this.run = { message, remaining: count, total: count };
     this.port?.ui.notify(
       `Auto mode: sending "${message}" ${count} time(s).`,
-      "info",
+      'info',
     );
     this.setStatus(0, count);
     this.timer = setTimeout(() => this.tick(), 0);
@@ -82,7 +82,7 @@ export class AutoLoop {
     this.clearTimer();
     this.run = undefined;
     if (wasRunning) {
-      this.port?.ui.notify("Auto mode stopped.", "info");
+      this.port?.ui.notify('Auto mode stopped.', 'info');
       this.clearStatus();
     }
     return wasRunning;
@@ -120,8 +120,7 @@ export class AutoLoop {
   }
 
   deferLatestSteering():
-    | { message: string; target: "auto" | "followUp" }
-    | undefined {
+    { message: string; target: 'auto' | 'followUp' } | undefined {
     if (!this.latestSteering) return undefined;
 
     const message = this.latestSteering;
@@ -130,10 +129,10 @@ export class AutoLoop {
 
     if (this.run && this.run.remaining > 0) {
       this.run.deferredMessage = message;
-      return { message, target: "auto" };
+      return { message, target: 'auto' };
     }
 
-    return { message, target: "followUp" };
+    return { message, target: 'followUp' };
   }
 
   consumeDeferredSteering(message: string): boolean {
@@ -170,7 +169,7 @@ export class AutoLoop {
     if (this.run.remaining < 1) {
       this.clearTimer();
       this.run = undefined;
-      this.port.ui.notify("Auto mode complete.", "info");
+      this.port.ui.notify('Auto mode complete.', 'info');
       this.clearStatus();
       return;
     }

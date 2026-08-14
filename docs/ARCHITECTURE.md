@@ -43,12 +43,12 @@ External coupling is isolated in `infra/`. Pure helpers have zero SDK runtime de
 
 ## Module boundaries
 
-| Module | Owns | Side effects |
-|---|---|---|
-| `lib/auto-helpers` | `parseAutoArgs`, `textFromContent`, `getLastUserMessageText` | None — pure functions |
-| `infra/register-auto-command` | `/auto` command registration, timer lifecycle | Yes — pi API, setTimeout |
-| `domain/` | Business rules (when needed) | None |
-| `fixtures/` | Test data files | None |
+| Module                        | Owns                                                         | Side effects             |
+| ----------------------------- | ------------------------------------------------------------ | ------------------------ |
+| `lib/auto-helpers`            | `parseAutoArgs`, `textFromContent`, `getLastUserMessageText` | None — pure functions    |
+| `infra/register-auto-command` | `/auto` command registration, timer lifecycle                | Yes — pi API, setTimeout |
+| `domain/`                     | Business rules (when needed)                                 | None                     |
+| `fixtures/`                   | Test data files                                              | None                     |
 
 ## Config precedence
 
@@ -58,12 +58,12 @@ defaults < package.json `"pi"` config < runtime args
 
 See [engineering/guardrails.md](engineering/guardrails.md) for full policy → command → enforcement chain.
 
-| Gate | Command | CI |
-|---|---|---|
-| Type check | `make lint` | yes |
-| Tests | `make test` | yes |
-| Coverage | `make coverage` | no (local only) |
-| Full | `make all` | yes |
+| Gate       | Command         | CI              |
+| ---------- | --------------- | --------------- |
+| Type check | `make lint`     | yes             |
+| Tests      | `make test`     | yes             |
+| Coverage   | `make coverage` | no (local only) |
+| Full       | `make all`      | yes             |
 
 ## Anti-patterns
 

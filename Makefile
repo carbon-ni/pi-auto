@@ -1,9 +1,12 @@
-.PHONY: all lint test clean
+.PHONY: all lint format test clean
 
-all: lint test
+all: lint format test
 
 lint:
 	npm run lint
+
+format:
+	npm run format:check
 
 test:
 	npm test
