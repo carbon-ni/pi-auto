@@ -14,6 +14,11 @@ export type AutoArgs = {
 
 const MAX_COUNT = 100;
 
+/** Renders the status bar text for a running auto cycle, e.g. "auto 2/5". */
+export function formatAutoStatus(sent: number, total: number): string {
+  return `auto ${sent}/${total}`;
+}
+
 export function parseAutoArgs(args: string): AutoArgs | undefined {
   const trimmed = args.trim();
   if (!trimmed) return undefined;

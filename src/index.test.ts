@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  formatAutoStatus,
   getLastUserMessageText,
   parseAutoArgs,
   parseAutoEditArgs,
@@ -126,6 +127,14 @@ describe("getLastUserMessageText", () => {
   });
 });
 
+describe("formatAutoStatus", () => {
+  it("formats sent/total as auto x/y", () => {
+    expect(formatAutoStatus(0, 5)).toBe("auto 0/5");
+    expect(formatAutoStatus(3, 5)).toBe("auto 3/5");
+    expect(formatAutoStatus(5, 5)).toBe("auto 5/5");
+  });
+});
+
 // --- infra/register-auto-command ---
 
 function createMockPi() {
@@ -155,7 +164,7 @@ function emit(pi: ReturnType<typeof createMockPi>, event: string, payload: unkno
 
 function createMockCtx(isIdle = true, branch: unknown[] = []) {
   return {
-    ui: { notify: vi.fn() },
+    ui: { notify: vi.fn(), setStatus: vi.fn() },
     isIdle: () => isIdle,
     sessionManager: { getBranch: () => branch },
   };
@@ -231,6 +240,32 @@ describe("registerAutoCommand", () => {
     expect(pi.sendUserMessage).toHaveBeenCalledTimes(3);
 
     expect(ctx.ui.notify).toHaveBeenCalledWith("Auto mode complete.", "info");
+
+    vi.useRealTimers();
+  });
+
+  it("shows auto progress in the status bar", async () => {
+    vi.useFakeTimers();
+    const pi = createMockPi();
+    registerAutoCommand(pi as any);
+    const ctx = createMockCtx(true, [
+      { type: "message", message: { role: "user", content: [{ type: "text", text: "go" }] } },
+    ]);
+
+    await pi._commands.auto.handler("3", ctx);
+    expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("pi-auto", "auto 0/3");
+
+    vi.advanceTimersByTime(0);
+    expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("pi-auto", "auto 1/3");
+
+    vi.advanceTimersByTime(250);
+    expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("pi-auto", "auto 2/3");
+
+    vi.advanceTimersByTime(250);
+    expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("pi-auto", "auto 3/3");
+
+    vi.advanceTimersByTime(250);
+    expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("pi-auto", undefined);
 
     vi.useRealTimers();
   });
@@ -488,7 +523,7 @@ describe("registerAutoCommand", () => {
     registerAutoCommand(pi as any);
     let idle = false;
     const ctx = {
-      ui: { notify: vi.fn() },
+      ui: { notify: vi.fn(), setStatus: vi.fn() },
       isIdle: () => idle,
       sessionManager: {
         getBranch: () => [

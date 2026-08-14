@@ -13,19 +13,27 @@
  *   touching it. No notification.
  */
 
+import { formatAutoStatus } from "../lib/auto-helpers.js";
+
 const POLL_INTERVAL_MS = 250;
+
+const DEFAULT_STATUS_KEY = "pi-auto";
 
 export type NotifyLevel = "info" | "warning" | "error";
 
 export type LoopPort = {
   isIdle(): boolean;
-  ui: { notify(message: string, level?: NotifyLevel): void };
+  ui: {
+    notify(message: string, level?: NotifyLevel): void;
+    setStatus(key: string, text: string | undefined): void;
+  };
 };
 
 type AutoRun = {
   message: string;
   deferredMessage?: string;
   remaining: number;
+  total: number;
 };
 
 export class AutoLoop {
@@ -35,7 +43,10 @@ export class AutoLoop {
   private latestSteering?: string;
   private steeringToReplace?: string;
 
-  constructor(private readonly send: (message: string) => void) {}
+  constructor(
+    private readonly send: (message: string) => void,
+    private readonly statusKey = DEFAULT_STATUS_KEY,
+  ) {}
 
   attach(port: LoopPort): void {
     this.port = port;
@@ -56,11 +67,12 @@ export class AutoLoop {
 
   start(message: string, count: number): void {
     this.clearTimer();
-    this.run = { message, remaining: count };
+    this.run = { message, remaining: count, total: count };
     this.port?.ui.notify(
       `Auto mode: sending "${message}" ${count} time(s).`,
       "info",
     );
+    this.setStatus(0, count);
     this.timer = setTimeout(() => this.tick(), 0);
   }
 
@@ -69,7 +81,10 @@ export class AutoLoop {
     const wasRunning = this.isRunning();
     this.clearTimer();
     this.run = undefined;
-    if (wasRunning) this.port?.ui.notify("Auto mode stopped.", "info");
+    if (wasRunning) {
+      this.port?.ui.notify("Auto mode stopped.", "info");
+      this.clearStatus();
+    }
     return wasRunning;
   }
 
@@ -78,7 +93,9 @@ export class AutoLoop {
     if (!this.run) return false;
     this.run.message = message;
     this.run.remaining = count;
+    this.run.total = count;
     this.run.deferredMessage = undefined;
+    this.setStatus(0, count);
     return true;
   }
 
@@ -134,10 +151,19 @@ export class AutoLoop {
     this.timer = undefined;
   }
 
+  private setStatus(sent: number, total: number): void {
+    this.port?.ui.setStatus(this.statusKey, formatAutoStatus(sent, total));
+  }
+
+  private clearStatus(): void {
+    this.port?.ui.setStatus(this.statusKey, undefined);
+  }
+
   private tick(): void {
     if (!this.run || !this.port) {
       this.clearTimer();
       this.run = undefined;
+      this.clearStatus();
       return;
     }
 
@@ -145,6 +171,7 @@ export class AutoLoop {
       this.clearTimer();
       this.run = undefined;
       this.port.ui.notify("Auto mode complete.", "info");
+      this.clearStatus();
       return;
     }
 
@@ -159,6 +186,7 @@ export class AutoLoop {
         : this.run.message;
     this.run.remaining -= 1;
     this.send(message);
+    this.setStatus(this.run.total - this.run.remaining, this.run.total);
     this.timer = setTimeout(() => this.tick(), POLL_INTERVAL_MS);
   }
 }

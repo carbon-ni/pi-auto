@@ -5,7 +5,7 @@ import { AutoLoop, type LoopPort } from "./auto-loop.js";
 function createPort(isIdle = true): LoopPort {
   return {
     isIdle: () => isIdle,
-    ui: { notify: vi.fn() },
+    ui: { notify: vi.fn(), setStatus: vi.fn() },
   };
 }
 
@@ -64,7 +64,10 @@ describe("AutoLoop", () => {
     vi.useFakeTimers();
     const send = vi.fn();
     let idle = false;
-    const port: LoopPort = { isIdle: () => idle, ui: { notify: vi.fn() } };
+    const port: LoopPort = {
+      isIdle: () => idle,
+      ui: { notify: vi.fn(), setStatus: vi.fn() },
+    };
     const loop = new AutoLoop(send);
     loop.attach(port);
 
@@ -284,6 +287,96 @@ describe("AutoLoop", () => {
     loop.start("again", 1);
     vi.advanceTimersByTime(0);
     expect(send).toHaveBeenLastCalledWith("again");
+
+    vi.useRealTimers();
+  });
+});
+
+describe("AutoLoop status bar", () => {
+  it("shows auto 0/N on start, x/N after each send, then clears on complete", () => {
+    vi.useFakeTimers();
+    const send = vi.fn();
+    const loop = new AutoLoop(send);
+    const port = createPort(true);
+    loop.attach(port);
+
+    loop.start("go", 3);
+    expect(port.ui.setStatus).toHaveBeenCalledWith("pi-auto", "auto 0/3");
+
+    vi.advanceTimersByTime(0);
+    expect(port.ui.setStatus).toHaveBeenLastCalledWith("pi-auto", "auto 1/3");
+
+    vi.advanceTimersByTime(250);
+    expect(port.ui.setStatus).toHaveBeenLastCalledWith("pi-auto", "auto 2/3");
+
+    vi.advanceTimersByTime(250);
+    expect(port.ui.setStatus).toHaveBeenLastCalledWith("pi-auto", "auto 3/3");
+
+    vi.advanceTimersByTime(250);
+    expect(port.ui.setStatus).toHaveBeenLastCalledWith("pi-auto", undefined);
+
+    vi.useRealTimers();
+  });
+
+  it("clears the status when stopped", () => {
+    vi.useFakeTimers();
+    const loop = new AutoLoop(vi.fn());
+    const port = createPort(true);
+    loop.attach(port);
+
+    loop.start("go", 5);
+    expect(loop.stop()).toBe(true);
+    expect(port.ui.setStatus).toHaveBeenLastCalledWith("pi-auto", undefined);
+
+    vi.useRealTimers();
+  });
+
+  it("does not clear the status when nothing is running", () => {
+    const loop = new AutoLoop(vi.fn());
+    const port = createPort(true);
+    loop.attach(port);
+
+    expect(loop.stop()).toBe(false);
+    expect(port.ui.setStatus).not.toHaveBeenCalled();
+  });
+
+  it("resets the status to auto 0/N after edit", () => {
+    vi.useFakeTimers();
+    const loop = new AutoLoop(vi.fn());
+    const port = createPort(true);
+    loop.attach(port);
+
+    loop.start("go", 5);
+    vi.advanceTimersByTime(0);
+
+    expect(loop.edit("again", 2)).toBe(true);
+    expect(port.ui.setStatus).toHaveBeenLastCalledWith("pi-auto", "auto 0/2");
+
+    vi.useRealTimers();
+  });
+
+  it("uses the injected status key", () => {
+    const loop = new AutoLoop(vi.fn(), "custom-status");
+    const port = createPort(true);
+    loop.attach(port);
+
+    loop.start("go", 1);
+    expect(port.ui.setStatus).toHaveBeenCalledWith("custom-status", "auto 0/1");
+  });
+
+  it("does not touch the status bar on detach", () => {
+    vi.useFakeTimers();
+    const loop = new AutoLoop(vi.fn());
+    const port = createPort(true);
+    loop.attach(port);
+
+    loop.start("go", 5);
+    expect(port.ui.setStatus).toHaveBeenCalledTimes(1);
+
+    loop.detach();
+    vi.advanceTimersByTime(10_000);
+
+    expect(port.ui.setStatus).toHaveBeenCalledTimes(1);
 
     vi.useRealTimers();
   });

@@ -19,7 +19,10 @@ import {
 import { AutoLoop } from "./auto-loop.js";
 
 export default function registerAutoCommand(pi: ExtensionAPI) {
-  const loop = new AutoLoop((message) => pi.sendUserMessage(message));
+  const loop = new AutoLoop(
+    (message) => pi.sendUserMessage(message),
+    "pi-auto",
+  );
 
   pi.registerTool({
     name: "auto_stop",
